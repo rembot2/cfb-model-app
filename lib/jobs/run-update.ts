@@ -118,18 +118,11 @@ async function fetchTeamGameStats(season: number) {
   const supabase = getServiceSupabase();
   const cfbd = new CfbdClient();
   const games = await cfbd.getSeasonGamesAndPostseason(season);
-  const regularWeeks = uniqueWeeks(games.filter((game) => game.seasonType !== 'postseason'));
-  const postseasonWeeks = uniqueWeeks(games.filter((game) => game.seasonType === 'postseason'));
   const rows: ReturnType<typeof mapTeamGameStatRow>[] = [];
 
-  for (const week of regularWeeks) {
-    const stats = await cfbd.getTeamGameStats(season, 'regular', week);
-    rows.push(...stats.map((stat) => mapTeamGameStatRow(stat, games, season, week)));
-  }
-
-  for (const week of postseasonWeeks) {
-    const stats = await cfbd.getTeamGameStats(season, 'postseason', week);
-    rows.push(...stats.map((stat) => mapTeamGameStatRow(stat, games, season, week)));
+  for (const seasonType of ['regular', 'postseason'] as const) {
+    const stats = await cfbd.getAdvancedGameStats(season, seasonType);
+    rows.push(...stats.map((stat) => mapTeamGameStatRow(stat, games, season)));
   }
 
   const validRows = rows.filter(row => row.season && row.week && row.team && row.opponent);
@@ -343,12 +336,12 @@ function mapGameRow(game: CfbdGame) {
   };
 }
 
-function mapTeamGameStatRow(stat: CfbdTeamGameStat, games: CfbdGame[], requestedSeason: number, requestedWeek: number) {
+function mapTeamGameStatRow(stat: CfbdTeamGameStat, games: CfbdGame[], requestedSeason: number) {
   const matchingGame = games.find((game) => game.id === stat.gameId);
   return {
     cfbd_game_id: stat.gameId ?? matchingGame?.id ?? null,
     season: stat.season ?? matchingGame?.season ?? requestedSeason,
-    week: stat.week ?? matchingGame?.week ?? requestedWeek,
+    week: stat.week ?? matchingGame?.week ?? null,
     team: stat.team,
     opponent: stat.opponent,
     is_home: matchingGame ? matchingGame.homeTeam === stat.team : null,

@@ -1,5 +1,7 @@
 import { getServiceSupabase } from '../db/client';
 import { CfbdClient, type CfbdGame, type CfbdTeamGameStat } from '../data/cfbd';
+import { computeOn3Composite } from '../data/on3';
+import { calculateTeamRatings, type RawTeamGameStat } from '../model/ratings';
 
 type UpdateOptions = {
   season: number;
@@ -131,8 +133,57 @@ async function fetchRosters(season: number) {
 }
 
 async function calculateRatings(season: number) {
-  // TODO: Port buildRollingRatings/calculateRatingsCore into TypeScript.
-  return { season, status: 'not_implemented' };
+  const supabase = getServiceSupabase();
+  const { data: statRows, error: statError } = await supabase
+    .from('team_game_stats')
+    .select('*')
+    .lte('season', season);
+
+  if (statError) throw statError;
+
+  const { data: rosterRows, error: rosterError } = await supabase
+    .from('roster_players')
+    .select('season,team,player_name,position,rating,source')
+    .eq('season', season);
+
+  if (rosterError) throw rosterError;
+
+  const talentScores = buildTalentScores(rosterRows || [], season);
+  const ratings = calculateTeamRatings(
+    (statRows || []).map(mapRawStatRow),
+    talentScores,
+    {
+      season,
+      recencyWeight: 2.5,
+      iterations: 20,
+      talentWeight: 0.4
+    }
+  );
+
+  const rows = ratings.map((rating) => ({
+    season,
+    team: rating.team,
+    off_rating: rating.offRating,
+    def_rating: rating.defRating,
+    composite: rating.composite,
+    games: rating.games,
+    rush_off_rating: rating.rushOff,
+    pass_off_rating: rating.passOff,
+    rush_def_rating: rating.rushDef,
+    pass_def_rating: rating.passDef,
+    source: 'app',
+    synced_at: new Date().toISOString()
+  }));
+
+  if (rows.length) {
+    const { error } = await supabase
+      .from('ratings')
+      .upsert(rows, { onConflict: 'season,team' });
+
+    if (error) throw error;
+  }
+
+  return { season, status: 'success', count: rows.length };
 }
 
 async function generatePredictions(season: number) {
@@ -214,4 +265,42 @@ function deriveRushRate(offense: Record<string, any> | undefined) {
 function derivePassRate(offense: Record<string, any> | undefined) {
   const rushRate = deriveRushRate(offense);
   return rushRate === null ? null : 1 - rushRate;
+}
+
+function buildTalentScores(
+  rows: Array<{ team: string; rating: number | string | null }>,
+  season: number
+) {
+  const grouped = new Map<string, number[]>();
+  for (const row of rows) {
+    const rating = numberOrNull(row.rating);
+    if (!row.team || rating === null) continue;
+    if (!grouped.has(row.team)) grouped.set(row.team, []);
+    grouped.get(row.team)!.push(rating);
+  }
+
+  return Object.fromEntries(
+    [...grouped.entries()].map(([team, ratings]) => [team, computeOn3Composite(ratings, season)])
+  );
+}
+
+function mapRawStatRow(row: Record<string, any>): RawTeamGameStat {
+  return {
+    season: Number(row.season),
+    week: Number(row.week),
+    team: String(row.team),
+    opponent: String(row.opponent),
+    ppa_off: numberOrNull(row.ppa_off),
+    ppa_def: numberOrNull(row.ppa_def),
+    success_off: numberOrNull(row.success_off),
+    success_def: numberOrNull(row.success_def),
+    pts_per_drive_off: numberOrNull(row.pts_per_drive_off),
+    pts_per_drive_def: numberOrNull(row.pts_per_drive_def),
+    rush_ppa_off: numberOrNull(row.rush_ppa_off),
+    rush_ppa_def: numberOrNull(row.rush_ppa_def),
+    pass_ppa_off: numberOrNull(row.pass_ppa_off),
+    pass_ppa_def: numberOrNull(row.pass_ppa_def),
+    rush_rate_off: numberOrNull(row.rush_rate_off),
+    pass_rate_off: numberOrNull(row.pass_rate_off)
+  };
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runModelUpdate } from '@/lib/jobs/run-update';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   const secret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {

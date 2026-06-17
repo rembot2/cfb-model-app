@@ -1,6 +1,8 @@
 import { Table } from '@/components/Table';
 import { fetchTable } from '@/lib/db/queries';
 
+export const dynamic = 'force-dynamic';
+
 export default async function OptimizerPage() {
   const rows = await fetchTable('weight_optimizer', 200);
   rows.sort((a, b) => Number(a.rank) - Number(b.rank));

@@ -1,6 +1,8 @@
 import { BarList } from '@/components/BarList';
 import { fetchDashboardData } from '@/lib/db/queries';
 
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardPage() {
   const data = await fetchDashboardData();
   const latestSeason = Math.max(0, ...data.ratings.map(row => Number(row.season) || 0));

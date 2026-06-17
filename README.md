@@ -102,7 +102,7 @@ Local command:
 npm run job:update -- --season=2026
 ```
 
-At the moment, the job records a job run and returns placeholder statuses. The next implementation step is to move your real fetch/rating/backtest code into that pipeline.
+The job now fetches CFBD teams, games, and team-game stats, reads On3 roster source URLs from Supabase, calculates ratings, creates predictions, and can write backtest and optimizer output when requested.
 
 ## Deploy
 

@@ -1,6 +1,8 @@
 import { Table } from '@/components/Table';
 import { fetchTable } from '@/lib/db/queries';
 
+export const dynamic = 'force-dynamic';
+
 export default async function BacktestPage() {
   const rows = await fetchTable('backtest_summary', 500);
   rows.sort((a, b) => String(b.season).localeCompare(String(a.season)) || String(a.week).localeCompare(String(b.week)));

@@ -1,6 +1,8 @@
 import { Table } from '@/components/Table';
 import { fetchTable } from '@/lib/db/queries';
 
+export const dynamic = 'force-dynamic';
+
 export default async function RatingsPage() {
   const rows = await fetchTable('ratings', 500);
   rows.sort((a, b) => Number(b.season) - Number(a.season) || Number(b.composite || 0) - Number(a.composite || 0));

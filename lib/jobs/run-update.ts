@@ -68,7 +68,7 @@ export async function runModelUpdate(options: UpdateOptions) {
       .from('job_runs')
       .update({
         status: 'error',
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
         finished_at: new Date().toISOString()
       })
       .eq('id', run.id);
@@ -98,11 +98,7 @@ async function fetchTeams(season: number) {
       updated_at: new Date().toISOString()
     }));
 
-  const { error } = await supabase
-    .from('teams')
-    .upsert(rows, { onConflict: 'school' });
-
-  if (error) throw error;
+  await upsertRows(supabase, 'teams', rows, 'school');
   return { season, status: 'success', count: rows.length };
 }
 
@@ -114,11 +110,7 @@ async function fetchGames(season: number) {
     .filter((game) => game.homeTeam && game.awayTeam)
     .map(mapGameRow);
 
-  const { error } = await supabase
-    .from('games')
-    .upsert(rows, { onConflict: 'cfbd_game_id' });
-
-  if (error) throw error;
+  await upsertRows(supabase, 'games', rows, 'cfbd_game_id');
   return { season, status: 'success', count: rows.length };
 }
 
@@ -140,11 +132,7 @@ async function fetchTeamGameStats(season: number) {
     rows.push(...stats.map((stat) => mapTeamGameStatRow(stat, games)));
   }
 
-  const { error } = await supabase
-    .from('team_game_stats')
-    .upsert(rows, { onConflict: 'season,week,team,opponent' });
-
-  if (error) throw error;
+  await upsertRows(supabase, 'team_game_stats', rows, 'season,week,team,opponent');
   return { season, status: 'success', count: rows.length };
 }
 
@@ -185,11 +173,7 @@ async function fetchRosters(
     }));
 
     if (!rows.length) continue;
-    const { error: upsertError } = await supabase
-      .from('roster_players')
-      .upsert(rows, { onConflict: 'season,team,player_name,position' });
-
-    if (upsertError) throw upsertError;
+    await upsertRows(supabase, 'roster_players', rows, 'season,team,player_name,position');
     playerCount += rows.length;
   }
 
@@ -248,11 +232,7 @@ async function calculateRatings(season: number) {
   }));
 
   if (rows.length) {
-    const { error } = await supabase
-      .from('ratings')
-      .upsert(rows, { onConflict: 'season,team' });
-
-    if (error) throw error;
+    await upsertRows(supabase, 'ratings', rows, 'season,team');
   }
 
   return { season, status: 'success', count: rows.length };
@@ -313,11 +293,7 @@ async function generatePredictions(season: number) {
     .filter((row): row is NonNullable<typeof row> => row !== null);
 
   if (rows.length) {
-    const { error: upsertError } = await supabase
-      .from('predictions')
-      .upsert(rows, { onConflict: 'season,week,home_team,away_team' });
-
-    if (upsertError) throw upsertError;
+    await upsertRows(supabase, 'predictions', rows, 'season,week,home_team,away_team');
   }
 
   return { season, status: 'success', count: rows.length };
@@ -332,17 +308,11 @@ async function runBacktest(season: number) {
   const summaryRows = buildBacktestSummaryRows(season, evaluated);
 
   if (gameRows.length) {
-    const { error } = await supabase
-      .from('backtest_games')
-      .upsert(gameRows, { onConflict: 'season,week,home_team,away_team' });
-    if (error) throw error;
+    await upsertRows(supabase, 'backtest_games', gameRows, 'season,week,home_team,away_team');
   }
 
   if (summaryRows.length) {
-    const { error } = await supabase
-      .from('backtest_summary')
-      .upsert(summaryRows, { onConflict: 'season,week' });
-    if (error) throw error;
+    await upsertRows(supabase, 'backtest_summary', summaryRows, 'season,week');
   }
 
   const optimizerRows = await runOptimizerThroughSeason(season);
@@ -494,11 +464,7 @@ async function runOptimizerThroughSeason(season: number) {
     synced_at: new Date().toISOString()
   }));
 
-  const { error } = await supabase
-    .from('weight_optimizer')
-    .upsert(rows, { onConflict: 'rank' });
-
-  if (error) throw error;
+  await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
   return { status: 'success', count: rows.length };
 }
 
@@ -697,4 +663,37 @@ function buildSummaryRow(season: string, week: string, games: EvaluatedGame[]) {
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+async function upsertRows(
+  supabase: ReturnType<typeof getServiceSupabase>,
+  table: string,
+  rows: Record<string, unknown>[],
+  onConflict: string,
+  chunkSize = 500
+) {
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const { error } = await supabase
+      .from(table)
+      .upsert(chunk, { onConflict });
+    if (error) {
+      throw new Error(`${table} upsert failed: ${errorMessage(error)}`);
+    }
+  }
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const message = record.message || record.error || record.details || record.hint || record.code;
+    if (message) return String(message);
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }

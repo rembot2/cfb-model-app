@@ -184,23 +184,42 @@ async function fetchRosters(
 
 async function calculateRatings(season: number) {
   const supabase = getServiceSupabase();
-  const { data: statRows, error: statError } = await supabase
-    .from('team_game_stats')
-    .select('*')
-    .lte('season', season);
+  const statRows: any[] = [];
+  const rosterRows: any[] = [];
+  const pageSize = 1000;
 
-  if (statError) throw statError;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('team_game_stats')
+      .select('*')
+      .lte('season', season)
+      .order('season', { ascending: true })
+      .order('team', { ascending: true })
+      .order('week', { ascending: true })
+      .range(from, from + pageSize - 1);
 
-  const { data: rosterRows, error: rosterError } = await supabase
-    .from('roster_players')
-    .select('season,team,player_name,position,rating,source')
-    .eq('season', season);
+    if (error) throw error;
+    statRows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
 
-  if (rosterError) throw rosterError;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('roster_players')
+      .select('season,team,player_name,position,rating,source')
+      .eq('season', season)
+      .order('team', { ascending: true })
+      .order('player_name', { ascending: true })
+      .range(from, from + pageSize - 1);
 
-  const talentScores = buildTalentScores(rosterRows || [], season);
+    if (error) throw error;
+    rosterRows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+
+  const talentScores = buildTalentScores(rosterRows, season);
   const ratings = calculateTeamRatings(
-    (statRows || []).map(mapRawStatRow),
+    statRows.map(mapRawStatRow),
     talentScores,
     {
       season,

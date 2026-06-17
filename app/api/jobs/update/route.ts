@@ -69,9 +69,26 @@ function numberOrNull(value: unknown) {
 }
 
 function formatError(error: unknown) {
+  const message = errorMessage(error);
   return {
     ok: false,
-    error: error instanceof Error ? error.message : String(error),
+    error: message,
+    details: error && typeof error === 'object' ? error : undefined,
     stack: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : undefined
   };
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const message = record.message || record.error || record.details || record.hint || record.code;
+    if (message) return String(message);
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }

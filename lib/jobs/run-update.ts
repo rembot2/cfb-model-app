@@ -10,12 +10,18 @@ import type { ModelCalibration, ModelWeights, Rating } from '../model/types';
 type UpdateOptions = {
   season: number;
   includeBacktest?: boolean;
+  steps?: UpdateStep[];
+  rosterLimit?: number | null;
+  rosterOffset?: number;
 };
+
+export type UpdateStep = 'teams' | 'games' | 'stats' | 'rosters' | 'ratings' | 'predictions' | 'backtest';
 
 export async function runModelUpdate(options: UpdateOptions) {
   const supabase = getServiceSupabase();
   const startedAt = new Date().toISOString();
   const jobName = `model-update-${options.season}`;
+  const steps = normalizeSteps(options);
 
   const { data: run, error: insertError } = await supabase
     .from('job_runs')
@@ -32,15 +38,19 @@ export async function runModelUpdate(options: UpdateOptions) {
   if (insertError) throw insertError;
 
   try {
-    const result = {
-      teams: await fetchTeams(options.season),
-      games: await fetchGames(options.season),
-      stats: await fetchTeamGameStats(options.season),
-      rosters: await fetchRosters(options.season),
-      ratings: await calculateRatings(options.season),
-      predictions: await generatePredictions(options.season),
-      backtest: options.includeBacktest ? await runBacktest(options.season) : null
-    };
+    const result: Partial<Record<UpdateStep, unknown>> = {};
+    if (steps.has('teams')) result.teams = await fetchTeams(options.season);
+    if (steps.has('games')) result.games = await fetchGames(options.season);
+    if (steps.has('stats')) result.stats = await fetchTeamGameStats(options.season);
+    if (steps.has('rosters')) {
+      result.rosters = await fetchRosters(options.season, {
+        limit: options.rosterLimit,
+        offset: options.rosterOffset ?? 0
+      });
+    }
+    if (steps.has('ratings')) result.ratings = await calculateRatings(options.season);
+    if (steps.has('predictions')) result.predictions = await generatePredictions(options.season);
+    if (steps.has('backtest')) result.backtest = await runBacktest(options.season);
 
     await supabase
       .from('job_runs')
@@ -64,6 +74,13 @@ export async function runModelUpdate(options: UpdateOptions) {
       .eq('id', run.id);
     throw error;
   }
+}
+
+function normalizeSteps(options: UpdateOptions) {
+  if (options.steps?.length) return new Set(options.steps);
+  const defaults: UpdateStep[] = ['teams', 'games', 'stats', 'rosters', 'ratings', 'predictions'];
+  if (options.includeBacktest) defaults.push('backtest');
+  return new Set(defaults);
 }
 
 async function fetchTeams(season: number) {
@@ -131,21 +148,30 @@ async function fetchTeamGameStats(season: number) {
   return { season, status: 'success', count: rows.length };
 }
 
-async function fetchRosters(season: number) {
+async function fetchRosters(
+  season: number,
+  options: { limit?: number | null; offset?: number } = {}
+) {
   const supabase = getServiceSupabase();
   const { data: sources, error } = await supabase
     .from('on3_roster_sources')
     .select('season,team,url')
     .eq('season', season)
-    .eq('enabled', true);
+    .eq('enabled', true)
+    .order('team', { ascending: true });
 
   if (error) throw error;
   if (!sources?.length) {
     return { season, status: 'skipped', reason: 'No enabled On3 roster sources found', count: 0 };
   }
 
+  const offset = Math.max(0, options.offset ?? 0);
+  const selectedSources = Number.isFinite(Number(options.limit)) && Number(options.limit) > 0
+    ? sources.slice(offset, offset + Number(options.limit))
+    : sources.slice(offset);
+
   let playerCount = 0;
-  for (const source of sources) {
+  for (const source of selectedSources) {
     const players = await fetchOn3Roster(source.url, source.team, season);
     const rows = players.map((player) => ({
       season,
@@ -167,7 +193,15 @@ async function fetchRosters(season: number) {
     playerCount += rows.length;
   }
 
-  return { season, status: 'success', teams: sources.length, count: playerCount };
+  return {
+    season,
+    status: 'success',
+    teams: selectedSources.length,
+    totalTeams: sources.length,
+    offset,
+    limit: options.limit ?? null,
+    count: playerCount
+  };
 }
 
 async function calculateRatings(season: number) {

@@ -1,6 +1,8 @@
 import { Table } from '@/components/Table';
 import { fetchTable } from '@/lib/db/queries';
 
+export const dynamic = 'force-dynamic';
+
 export default async function GamesPage() {
   const rows = await fetchTable('backtest_games', 1000);
   rows.sort((a, b) => Number(b.season) - Number(a.season) || Number(b.week) - Number(a.week));

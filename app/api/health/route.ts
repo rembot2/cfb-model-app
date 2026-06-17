@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getPublicSupabase } from '@/lib/db/client';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const supabase = getPublicSupabase();
   const { error } = await supabase.from('ratings').select('id', { count: 'exact', head: true });

@@ -276,7 +276,7 @@ async function generatePredictions(season: number) {
         updated_at: new Date().toISOString()
       };
     })
-    .filter(Boolean);
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 
   if (rows.length) {
     const { error: upsertError } = await supabase

@@ -33,23 +33,26 @@ Supabase Postgres
 - Optimizer page
 - Core prediction formula ported to TypeScript
 - Protected update job endpoint
-- Job runner skeleton
+- Backend update job for CFBD teams, games, team stats, On3 roster sources, ratings, predictions, backtests, and optimizer output
 
-## What Still Needs To Be Migrated
+## Migration Status
 
-These are intentionally marked `TODO` in `lib/jobs/run-update.ts`:
+The Apps Script source has been preserved in `legacy/apps-script/`.
+
+The main backend ports are now in:
 
 ```text
-fetchTeams()
-fetchGames()
-fetchTeamGameStats()
-fetchRosters()
-calculateRatings()
-generatePredictions()
-runBacktest()
+lib/data/cfbd.ts
+lib/data/on3.ts
+lib/data/coach-stats.ts
+lib/model/ratings.ts
+lib/model/predict.ts
+lib/model/evaluate.ts
+lib/model/optimizer.ts
+lib/jobs/run-update.ts
 ```
 
-That is where the existing Apps Script code gets moved next.
+The next step is live validation: run the backend job against Supabase and compare output rows to the old spreadsheet for the same season.
 
 ## Setup
 
@@ -111,7 +114,7 @@ Vercel
 
 Add the same environment variables in Vercel Project Settings.
 
-Then add a Vercel Cron Job that calls:
+The repo includes a Vercel Cron Job that calls:
 
 ```text
 /api/jobs/update
@@ -120,11 +123,11 @@ Then add a Vercel Cron Job that calls:
 ## Migration Plan From Current Sheets Version
 
 1. Keep Version 2 running while this app is built.
-2. Port CFBD fetch into `fetchGames()` and `fetchTeamGameStats()`.
-3. Port On3 scraper into `fetchRosters()`.
-4. Port `calculateRatingsCore()` into `calculateRatings()`.
-5. Port `runBacktest()` into `runBacktest()`.
-6. Port optimizer into a backend job.
+2. Run `database/schema.sql` again so the new `on3_roster_sources` table exists.
+3. Add one row per team/year to `on3_roster_sources`.
+4. Run the update job for a historical season.
+5. Compare Supabase ratings/backtests/optimizer rows to the old spreadsheet output.
+6. Tighten any formula differences found during validation.
 7. Stop using Google Sheets once outputs match.
 
 This avoids breaking the working model while moving toward the real standalone app.

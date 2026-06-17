@@ -1,0 +1,751 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      :root {
+        --bg: #f4f6f8;
+        --panel: #ffffff;
+        --ink: #18202a;
+        --muted: #687385;
+        --line: #d9e0e8;
+        --nav: #17202b;
+        --nav-soft: #202b38;
+        --blue: #2f6fed;
+        --teal: #158c84;
+        --green: #1f8a4c;
+        --red: #c2413d;
+        --amber: #b7791f;
+        --shadow: 0 14px 34px rgba(24, 32, 42, 0.08);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, Arial, sans-serif;
+      }
+      button, input, select { font: inherit; }
+      .app-shell {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+      .sidebar {
+        background: var(--nav);
+        color: #f7fafc;
+        padding: 22px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+      }
+      .brand-block {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .brand-mark {
+        width: 46px;
+        height: 46px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: #e8f0fe;
+        color: #163b7a;
+        font-weight: 900;
+      }
+      .brand-block h1 {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.1;
+      }
+      .brand-block p {
+        margin: 4px 0 0;
+        color: #b9c4d1;
+        font-size: 12px;
+      }
+      .nav {
+        display: grid;
+        gap: 6px;
+      }
+      .nav-button {
+        border: 0;
+        border-radius: 6px;
+        color: #dce5ee;
+        background: transparent;
+        padding: 10px 12px;
+        text-align: left;
+        cursor: pointer;
+      }
+      .nav-button:hover, .nav-button.active {
+        background: var(--nav-soft);
+        color: #ffffff;
+      }
+      .status-card {
+        margin-top: auto;
+        border: 1px solid #2a3747;
+        border-radius: 8px;
+        background: #101822;
+        padding: 14px;
+        color: #b9c4d1;
+        font-size: 13px;
+      }
+      .status-card strong {
+        display: block;
+        color: #ffffff;
+        margin-bottom: 6px;
+      }
+      .main {
+        min-width: 0;
+        padding: 22px;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+      .eyebrow {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .topbar h2 {
+        margin: 2px 0 0;
+        font-size: 26px;
+      }
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .toolbar select, .toolbar input {
+        height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #ffffff;
+        color: var(--ink);
+        padding: 0 10px;
+      }
+      .toolbar input { width: min(32vw, 320px); }
+      .notice {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--muted);
+        padding: 14px 16px;
+        margin-bottom: 14px;
+        white-space: pre-wrap;
+      }
+      .notice.error {
+        border-color: #f2bbb8;
+        background: #fff5f4;
+        color: #8f2f2b;
+      }
+      .hidden { display: none !important; }
+      .view { display: none; }
+      .view.active { display: block; }
+      .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .kpi-card, .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+      .kpi-card { padding: 15px; }
+      .kpi-card span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .kpi-card strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 30px;
+        line-height: 1;
+      }
+      .kpi-card small {
+        display: block;
+        margin-top: 9px;
+        color: var(--muted);
+        min-height: 18px;
+      }
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr 0.8fr;
+        gap: 12px;
+      }
+      .panel {
+        min-width: 0;
+        padding: 14px;
+      }
+      .panel-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .panel-header h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+      .panel-header span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .team-bars, .bucket-chart {
+        display: grid;
+        gap: 8px;
+      }
+      .team-bar-row, .bucket-row {
+        display: grid;
+        grid-template-columns: minmax(110px, 1fr) minmax(90px, 1.5fr) 58px;
+        align-items: center;
+        gap: 10px;
+        min-height: 32px;
+      }
+      .team-name, .bucket-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 700;
+      }
+      .bar-track {
+        height: 9px;
+        background: #e8eef5;
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--teal), var(--blue));
+      }
+      .bar-value {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
+      .table-shell {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: auto;
+        max-height: calc(100vh - 128px);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 940px;
+      }
+      th, td {
+        border-bottom: 1px solid #e4e9ef;
+        padding: 9px 10px;
+        text-align: left;
+        white-space: nowrap;
+        font-size: 13px;
+      }
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #17202b;
+        color: #ffffff;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      tbody tr:nth-child(even) { background: #f9fbfd; }
+      .num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 58px;
+        border-radius: 999px;
+        padding: 3px 9px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .pill.win { background: #e1f4e8; color: var(--green); }
+      .pill.loss { background: #fde7e5; color: var(--red); }
+      .pill.push { background: #fff4d6; color: var(--amber); }
+      .optimizer-best {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(130px, 1fr));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 10px;
+        background: #f9fbfd;
+      }
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .metric strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 18px;
+      }
+      .toggle-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+      @media (max-width: 980px) {
+        .app-shell { grid-template-columns: 1fr; }
+        .nav { grid-template-columns: repeat(5, 1fr); }
+        .nav-button { text-align: center; }
+        .status-card { margin-top: 0; }
+        .kpi-grid, .dashboard-grid { grid-template-columns: 1fr 1fr; }
+      }
+      @media (max-width: 640px) {
+        .main { padding: 14px; }
+        .topbar, .toolbar { align-items: stretch; flex-direction: column; }
+        .toolbar input, .toolbar select { width: 100%; }
+        .nav, .kpi-grid, .dashboard-grid, .optimizer-best { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">CFB</div>
+          <div>
+            <h1>Model Console</h1>
+            <p id="sheetName">Google Sheets backend</p>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-button active" data-view="dashboard">Dashboard</button>
+          <button class="nav-button" data-view="ratings">Ratings</button>
+          <button class="nav-button" data-view="games">Games</button>
+          <button class="nav-button" data-view="backtest">Backtest</button>
+          <button class="nav-button" data-view="optimizer">Optimizer</button>
+        </nav>
+        <div class="status-card">
+          <strong id="connectionStatus">Loading</strong>
+          <div>Hosted by Apps Script. The app reads directly from this spreadsheet project.</div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">Version 1</div>
+            <h2 id="viewTitle">Dashboard</h2>
+          </div>
+          <div class="toolbar">
+            <select id="seasonFilter"><option value="">All seasons</option></select>
+            <input id="searchBox" type="search" placeholder="Search team or game">
+          </div>
+        </header>
+
+        <section id="loadingState" class="notice">Loading model data...</section>
+        <section id="errorState" class="notice error hidden"></section>
+
+        <section id="dashboardView" class="view active">
+          <div class="kpi-grid">
+            <article class="kpi-card"><span>Top Team</span><strong id="kpiTopTeam">-</strong><small id="kpiTopComposite">Composite -</small></article>
+            <article class="kpi-card"><span>Vegas Edge Win %</span><strong id="kpiVegasEdge">-</strong><small id="kpiVegasEdgeRecord">No edge plays loaded</small></article>
+            <article class="kpi-card"><span>Backtest Pick %</span><strong id="kpiPickPct">-</strong><small id="kpiMarginError">Avg margin error -</small></article>
+            <article class="kpi-card"><span>Best Final Score</span><strong id="kpiFinalScore">-</strong><small id="kpiWeights">Weights -</small></article>
+          </div>
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="panel-header"><h3>Top Ratings</h3><span id="ratingsSheetLabel">-</span></div>
+              <div id="topRatingsList" class="team-bars"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header"><h3>Spread Buckets</h3><span>margin accuracy</span></div>
+              <div id="spreadBucketChart" class="bucket-chart"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header"><h3>Vegas Difference</h3><span>edge distance</span></div>
+              <div id="vegasBucketChart" class="bucket-chart"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="ratingsView" class="view"><div class="table-shell"><table id="ratingsTable"></table></div></section>
+        <section id="gamesView" class="view">
+          <label class="toggle-line"><input type="checkbox" id="edgeOnlyToggle"> <span>Show model-vs-Vegas plays only</span></label>
+          <div class="table-shell"><table id="gamesTable"></table></div>
+        </section>
+        <section id="backtestView" class="view"><div class="table-shell"><table id="summaryTable"></table></div></section>
+        <section id="optimizerView" class="view">
+          <section class="panel">
+            <div class="panel-header"><h3>Recommended Combination</h3><span id="bestRankLabel">-</span></div>
+            <div id="optimizerBest" class="optimizer-best"></div>
+          </section>
+          <div class="table-shell"><table id="optimizerTable"></table></div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const state = {
+        activeView: 'dashboard',
+        search: '',
+        season: '',
+        edgeOnly: false,
+        dashboard: null,
+        ratings: [],
+        games: [],
+        summary: [],
+        optimizer: { best: null, rows: [] },
+        buckets: { spreadBuckets: { rows: [] }, vegasDiffBuckets: { rows: [] } },
+      };
+
+      const columns = {
+        ratings: [
+          ['Rank', function(_, i) { return i + 1; }, 'num'],
+          ['Team', 'team'],
+          ['Composite', 'composite', 'num'],
+          ['Off', 'offRating', 'num'],
+          ['Def', 'defRating', 'num'],
+          ['Rush Off', 'rushOffRating', 'num'],
+          ['Pass Off', 'passOffRating', 'num'],
+          ['Rush Def', 'rushDefRating', 'num'],
+          ['Pass Def', 'passDefRating', 'num'],
+          ['QB', 'qbRating', 'num'],
+          ['OL', 'olRating', 'num'],
+          ['DL', 'dlRating', 'num'],
+          ['Games', 'games', 'num'],
+        ],
+        games: [
+          ['Season', 'season', 'num'],
+          ['Week', 'week', 'num'],
+          ['Home', 'homeTeam'],
+          ['Away', 'awayTeam'],
+          ['Vegas', 'vegasSpread'],
+          ['Model', 'modelSpread'],
+          ['Diff', 'modelVegasDiff', 'num'],
+          ['Model Pick', 'modelVegasPick'],
+          ['Result', function(row) { return resultPill(row.modelVegasResult); }],
+          ['ATS Margin', 'modelVegasAtsMargin', 'num'],
+          ['Actual', 'actualResult'],
+          ['Margin Error', 'marginError', 'num'],
+          ['Winner Pick', function(row) { return resultPill(row.pickResult); }],
+        ],
+        summary: [
+          ['Season', 'season'],
+          ['Week', 'week'],
+          ['Games', 'games', 'num'],
+          ['Pick %', 'pickPct', 'num'],
+          ['Avg Error', 'avgMarginError', 'num'],
+          ['Within 3 %', 'within3Pct', 'num'],
+          ['Within 7 %', 'within7Pct', 'num'],
+          ['Vegas Edge Plays', 'vegasEdgePlays', 'num'],
+          ['Vegas Edge Win %', 'vegasEdgeWinPct', 'num'],
+          ['Avg Model-Vegas Diff', 'avgModelVegasDiff', 'num'],
+        ],
+        optimizer: [
+          ['Rank', 'rank', 'num'],
+          ['Use', 'useThis'],
+          ['Pass', 'passWeight', 'num'],
+          ['Rush', 'rushWeight', 'num'],
+          ['Overall', 'overallWeight', 'num'],
+          ['Composite', 'compositeWeight', 'num'],
+          ['P/R', 'pointsPerRating', 'num'],
+          ['HFA', 'homeField', 'num'],
+          ['Shrink', 'marginShrink', 'num'],
+          ['Max', 'maxMargin', 'num'],
+          ['Train Score', 'trainScore', 'num'],
+          ['Holdout Score', 'holdoutScore', 'num'],
+          ['All Score', 'allScore', 'num'],
+          ['Final Score', 'finalScore', 'num'],
+        ],
+      };
+
+      document.addEventListener('DOMContentLoaded', function() {
+        bindEvents();
+        setActiveView('dashboard');
+        loadAll();
+      });
+
+      function bindEvents() {
+        document.querySelectorAll('.nav-button').forEach(function(button) {
+          button.addEventListener('click', function() { setActiveView(button.dataset.view); });
+        });
+        document.getElementById('searchBox').addEventListener('input', function(event) {
+          state.search = event.target.value.trim().toLowerCase();
+          renderActiveView();
+        });
+        document.getElementById('seasonFilter').addEventListener('change', function(event) {
+          state.season = event.target.value;
+          renderActiveView();
+        });
+        document.getElementById('edgeOnlyToggle').addEventListener('change', function(event) {
+          state.edgeOnly = event.target.checked;
+          renderGames();
+        });
+      }
+
+      function loadAll() {
+        setLoading(true);
+        setError('');
+        document.getElementById('connectionStatus').textContent = 'Loading';
+
+        Promise.all([
+          server('dashboard', {}),
+          server('ratings', {}),
+          server('backtest', { limit: 1500 }),
+          server('summary', {}),
+          server('optimizer', { limit: 100 }),
+          server('buckets', {}),
+        ]).then(function(results) {
+          results.forEach(function(result) {
+            if (!result.ok) throw new Error(result.error || 'API request failed');
+          });
+          state.dashboard = results[0].data;
+          state.ratings = results[1].data.rows || [];
+          state.games = results[2].data.rows || [];
+          state.summary = results[3].data.rows || [];
+          state.optimizer = results[4].data || { best: null, rows: [] };
+          state.buckets = results[5].data || { spreadBuckets: { rows: [] }, vegasDiffBuckets: { rows: [] } };
+          document.getElementById('connectionStatus').textContent = 'Connected';
+          document.getElementById('sheetName').textContent = state.dashboard.spreadsheetName || 'Connected spreadsheet';
+          populateSeasonFilter();
+          renderAll();
+        }).catch(function(err) {
+          document.getElementById('connectionStatus').textContent = 'Connection failed';
+          setError(err.message || String(err));
+        }).finally(function() {
+          setLoading(false);
+        });
+      }
+
+      function server(action, params) {
+        return new Promise(function(resolve, reject) {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(function(err) {
+              reject(new Error(err && err.message ? err.message : String(err)));
+            })
+            .apiCall(action, params || {});
+        });
+      }
+
+      function renderAll() {
+        renderDashboard();
+        renderRatings();
+        renderGames();
+        renderSummary();
+        renderOptimizer();
+      }
+
+      function renderActiveView() {
+        if (state.activeView === 'dashboard') renderDashboard();
+        if (state.activeView === 'ratings') renderRatings();
+        if (state.activeView === 'games') renderGames();
+        if (state.activeView === 'backtest') renderSummary();
+        if (state.activeView === 'optimizer') renderOptimizer();
+      }
+
+      function renderDashboard() {
+        var top = state.ratings[0] || {};
+        var overall = findOverallSummary();
+        var best = state.optimizer.best || {};
+        setText('kpiTopTeam', top.team || '-');
+        setText('kpiTopComposite', top.composite ? 'Composite ' + formatNumber(top.composite) : 'Composite -');
+        setText('kpiVegasEdge', overall.vegasEdgeWinPct ? formatNumber(overall.vegasEdgeWinPct) + '%' : '-');
+        setText('kpiVegasEdgeRecord', overall.vegasEdgePlays ? overall.vegasEdgeWins + '-' + overall.vegasEdgeLosses + '-' + (overall.vegasEdgePushes || 0) : 'No edge plays loaded');
+        setText('kpiPickPct', overall.pickPct ? formatNumber(overall.pickPct) + '%' : '-');
+        setText('kpiMarginError', overall.avgMarginError ? 'Avg margin error ' + formatNumber(overall.avgMarginError) : 'Avg margin error -');
+        setText('kpiFinalScore', best.finalScore ? formatNumber(best.finalScore) : '-');
+        setText('kpiWeights', best.passWeight !== undefined ? 'P ' + best.passWeight + ' / R ' + best.rushWeight + ' / O ' + best.overallWeight + ' / C ' + best.compositeWeight : 'Weights -');
+        setText('ratingsSheetLabel', state.dashboard && state.dashboard.ratingsSheet ? state.dashboard.ratingsSheet : '-');
+        renderTeamBars();
+        renderBucketChart('spreadBucketChart', rowsOf(state.buckets.spreadBuckets), 'pickPct');
+        renderBucketChart('vegasBucketChart', rowsOf(state.buckets.vegasDiffBuckets), 'pickPct');
+      }
+
+      function renderTeamBars() {
+        var el = document.getElementById('topRatingsList');
+        var rows = filterBySearch(state.ratings).slice(0, 15);
+        var max = Math.max.apply(null, [1].concat(rows.map(function(row) { return Number(row.composite) || 0; })));
+        el.innerHTML = rows.map(function(row) {
+          var value = Number(row.composite) || 0;
+          return '<div class="team-bar-row"><div class="team-name">' + esc(row.team || '-') + '</div><div class="bar-track"><div class="bar-fill" style="width:' + Math.max(4, value / max * 100) + '%"></div></div><div class="bar-value">' + formatNumber(value) + '</div></div>';
+        }).join('') || '<div class="notice">No ratings loaded</div>';
+      }
+
+      function renderBucketChart(id, rows, key) {
+        var el = document.getElementById(id);
+        var max = Math.max.apply(null, [1].concat(rows.map(function(row) { return Number(row[key]) || 0; })));
+        el.innerHTML = rows.map(function(row) {
+          var value = Number(row[key]) || 0;
+          return '<div class="bucket-row"><div class="bucket-name">' + esc(row.bucket || '-') + '</div><div class="bar-track"><div class="bar-fill" style="width:' + Math.max(4, value / max * 100) + '%"></div></div><div class="bar-value">' + formatNumber(value) + '%</div></div>';
+        }).join('') || '<div class="notice">No bucket data</div>';
+      }
+
+      function renderRatings() {
+        renderTable('ratingsTable', filterBySearch(state.ratings), columns.ratings);
+      }
+
+      function renderGames() {
+        var rows = state.games.slice();
+        if (state.season) rows = rows.filter(function(row) { return String(row.season) === String(state.season); });
+        if (state.edgeOnly) rows = rows.filter(function(row) { return row.modelVegasResult; });
+        renderTable('gamesTable', filterBySearch(rows), columns.games);
+      }
+
+      function renderSummary() {
+        var rows = state.summary.slice();
+        if (state.season) {
+          rows = rows.filter(function(row) {
+            return String(row.season) === String(state.season) || String(row.season).toUpperCase() === 'ALL';
+          });
+        }
+        renderTable('summaryTable', filterBySearch(rows), columns.summary);
+      }
+
+      function renderOptimizer() {
+        var best = state.optimizer.best || {};
+        setText('bestRankLabel', best.rank ? 'Rank ' + best.rank : '-');
+        document.getElementById('optimizerBest').innerHTML = [
+          ['Final Score', best.finalScore],
+          ['Pass Weight', best.passWeight],
+          ['Rush Weight', best.rushWeight],
+          ['Overall Weight', best.overallWeight],
+          ['Composite Weight', best.compositeWeight],
+          ['Points Per Rating', best.pointsPerRating],
+          ['Margin Shrink', best.marginShrink],
+          ['Max Margin', best.maxMargin],
+        ].map(function(item) {
+          return '<div class="metric"><span>' + esc(item[0]) + '</span><strong>' + esc(item[1] === undefined || item[1] === '' ? '-' : formatNumber(item[1])) + '</strong></div>';
+        }).join('');
+        renderTable('optimizerTable', filterBySearch(state.optimizer.rows || []), columns.optimizer);
+      }
+
+      function renderTable(id, rows, tableColumns) {
+        var table = document.getElementById(id);
+        var head = '<thead><tr>' + tableColumns.map(function(col) {
+          return '<th class="' + (col[2] || '') + '">' + esc(col[0]) + '</th>';
+        }).join('') + '</tr></thead>';
+        var body = rows.map(function(row, rowIndex) {
+          return '<tr>' + tableColumns.map(function(col) {
+            var value = typeof col[1] === 'function' ? col[1](row, rowIndex) : row[col[1]];
+            return '<td class="' + (col[2] || '') + '">' + formatCell(value) + '</td>';
+          }).join('') + '</tr>';
+        }).join('');
+        table.innerHTML = head + '<tbody>' + (body || '<tr><td colspan="' + tableColumns.length + '">No rows loaded</td></tr>') + '</tbody>';
+      }
+
+      function resultPill(value) {
+        var v = String(value || '').toUpperCase();
+        if (!v) return '';
+        var cls = v === 'WIN' || v === 'CORRECT' || v === 'BEST' ? 'win' : v === 'LOSS' || v === 'WRONG' ? 'loss' : v === 'PUSH' ? 'push' : '';
+        return '<span class="pill ' + cls + '">' + esc(v) + '</span>';
+      }
+
+      function setActiveView(view) {
+        state.activeView = view;
+        document.querySelectorAll('.nav-button').forEach(function(button) {
+          button.classList.toggle('active', button.dataset.view === view);
+        });
+        document.querySelectorAll('.view').forEach(function(section) {
+          section.classList.toggle('active', section.id === view + 'View');
+        });
+        setText('viewTitle', view.charAt(0).toUpperCase() + view.slice(1));
+        renderActiveView();
+      }
+
+      function populateSeasonFilter() {
+        var seasons = Array.from(new Set(state.games.map(function(row) { return row.season; }).concat(state.summary.map(function(row) { return row.season; })).filter(function(value) {
+          return value !== '' && value !== undefined && value !== null && String(value).toUpperCase() !== 'ALL';
+        }))).sort(function(a, b) { return Number(b) - Number(a); });
+        var current = state.season;
+        document.getElementById('seasonFilter').innerHTML = '<option value="">All seasons</option>' + seasons.map(function(season) {
+          return '<option value="' + esc(season) + '">' + esc(season) + '</option>';
+        }).join('');
+        document.getElementById('seasonFilter').value = seasons.indexOf(current) >= 0 ? current : '';
+        state.season = document.getElementById('seasonFilter').value;
+      }
+
+      function filterBySearch(rows) {
+        if (!state.search) return rows;
+        return rows.filter(function(row) {
+          return Object.keys(row).some(function(key) {
+            return String(row[key] || '').toLowerCase().indexOf(state.search) >= 0;
+          });
+        });
+      }
+
+      function findOverallSummary() {
+        return state.summary.find(function(row) { return String(row.week || '').toUpperCase() === 'OVERALL'; }) ||
+          state.summary.find(function(row) { return String(row.season || '').toUpperCase() === 'ALL'; }) ||
+          {};
+      }
+
+      function rowsOf(payload) {
+        return payload && Array.isArray(payload.rows) ? payload.rows : [];
+      }
+
+      function setLoading(isLoading) {
+        document.getElementById('loadingState').classList.toggle('hidden', !isLoading);
+      }
+
+      function setError(message) {
+        var el = document.getElementById('errorState');
+        el.textContent = message || '';
+        el.classList.toggle('hidden', !message);
+      }
+
+      function setText(id, value) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = value;
+      }
+
+      function formatCell(value) {
+        if (value === null || value === undefined || value === '') return '';
+        if (typeof value === 'string' && value.indexOf('<span') === 0) return value;
+        if (typeof value === 'number') return formatNumber(value);
+        return esc(value);
+      }
+
+      function formatNumber(value) {
+        var n = Number(value);
+        if (isNaN(n)) return value;
+        return Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(2).replace(/\.00$/, '');
+      }
+
+      function esc(value) {
+        return String(value === null || value === undefined ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+    </script>
+  </body>
+</html>

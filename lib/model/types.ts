@@ -8,6 +8,7 @@ export type Rating = {
   rushDef: number;
   passDef: number;
   passRate?: number | null;
+  games?: number | null;
 };
 
 export type ModelWeights = {

@@ -84,6 +84,10 @@ export class CfbdClient {
     return this.request<CfbdTeamGameStat[]>(`/games/teams?year=${year}&seasonType=${seasonType}${weekParam}`);
   }
 
+  async getAdvancedGameStats(year: number, seasonType: 'regular' | 'postseason' = 'regular') {
+    return this.request<CfbdTeamGameStat[]>(`/stats/game/advanced?year=${year}&seasonType=${seasonType}`);
+  }
+
   async getTeamSeasonStats(year: number) {
     return this.request<CfbdTeamSeasonStat[]>(`/stats/season?year=${year}`);
   }

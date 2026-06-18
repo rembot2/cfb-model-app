@@ -13,6 +13,7 @@ type UpdateOptions = {
   steps?: UpdateStep[];
   rosterLimit?: number | null;
   rosterOffset?: number;
+  optimizeBacktest?: boolean;
 };
 
 export type UpdateStep = 'teams' | 'games' | 'stats' | 'rosters' | 'ratings' | 'predictions' | 'backtest';
@@ -50,7 +51,7 @@ export async function runModelUpdate(options: UpdateOptions) {
     }
     if (steps.has('ratings')) result.ratings = await calculateRatings(options.season);
     if (steps.has('predictions')) result.predictions = await generatePredictions(options.season);
-    if (steps.has('backtest')) result.backtest = await runBacktest(options.season);
+    if (steps.has('backtest')) result.backtest = await runBacktest(options.season, options.optimizeBacktest !== false);
 
     await supabase
       .from('job_runs')
@@ -330,9 +331,15 @@ async function generatePredictions(season: number) {
   return { season, status: 'success', count: rows.length };
 }
 
-async function runBacktest(season: number) {
+async function runBacktest(season: number, optimize = true) {
   const supabase = getServiceSupabase();
-  const config = await loadActiveModelConfig();
+  const optimizationSeason = optimize ? await getLatestCompletedSeason() : null;
+  const optimizerRows = optimize
+    ? await runOptimizerThroughSeason(optimizationSeason ?? season)
+    : { status: 'reused' as const, count: 0, best: null };
+  const config = optimizerRows.best
+    ? { weights: optimizerRows.best.weights, calibration: optimizerRows.best.calibration }
+    : await loadActiveModelConfig();
   const games = await buildRatedGamesForSeason(season);
   const evaluated = evaluateRatedGames(games, config.weights, config.calibration).games;
   const gameRows = evaluated.map(mapBacktestGameRow);
@@ -346,12 +353,14 @@ async function runBacktest(season: number) {
     await upsertRows(supabase, 'backtest_summary', summaryRows, 'season,week');
   }
 
-  const optimizerRows = await runOptimizerThroughSeason(season);
   return {
     season,
     status: 'success',
     games: gameRows.length,
     summary: summaryRows.length,
+    optimizedThrough: optimizationSeason,
+    weightsUsed: config.weights,
+    calibrationUsed: config.calibration,
     optimizer: optimizerRows
   };
 }
@@ -474,7 +483,7 @@ async function runOptimizerThroughSeason(season: number) {
   }
 
   const results = optimizeWeights(ratedGames).slice(0, 250);
-  if (!results.length) return { status: 'skipped', count: 0 };
+  if (!results.length) return { status: 'skipped' as const, count: 0, best: null };
 
   const rows = results.map((row) => ({
     rank: row.rank,
@@ -496,7 +505,61 @@ async function runOptimizerThroughSeason(season: number) {
   }));
 
   await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
-  return { status: 'success', count: rows.length };
+  const best = results[0];
+  await activateOptimizedConfig(supabase, season, best.weights, best.calibration);
+  return {
+    status: 'success' as const,
+    count: rows.length,
+    best: {
+      weights: best.weights,
+      calibration: best.calibration,
+      finalScore: round2(best.finalScore)
+    }
+  };
+}
+
+async function getLatestCompletedSeason() {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from('games')
+    .select('season')
+    .eq('completed', true)
+    .order('season', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? Number(data.season) : null;
+}
+
+async function activateOptimizedConfig(
+  supabase: ReturnType<typeof getServiceSupabase>,
+  season: number,
+  weights: ModelWeights,
+  calibration: ModelCalibration
+) {
+  const { error: deactivateError } = await supabase
+    .from('model_configs')
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('is_active', true);
+  if (deactivateError) throw deactivateError;
+
+  const { error: activateError } = await supabase
+    .from('model_configs')
+    .upsert({
+      name: `optimized-through-${season}`,
+      pass_weight: weights.pass,
+      rush_weight: weights.rush,
+      overall_weight: weights.overall,
+      composite_weight: weights.composite,
+      points_per_rating: calibration.pointsPerRating,
+      home_field: calibration.homeField,
+      margin_shrink: calibration.marginShrink,
+      max_margin: calibration.maxMargin,
+      is_active: true,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'name' });
+  if (activateError) throw activateError;
 }
 
 async function buildRatedGamesForSeason(season: number): Promise<RatedGame[]> {

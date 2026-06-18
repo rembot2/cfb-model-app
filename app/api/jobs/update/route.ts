@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
       includeBacktest,
       steps,
       rosterLimit: numberOrNull(body.limit),
-      rosterOffset: numberOrNull(body.offset) ?? 0
+      rosterOffset: numberOrNull(body.offset) ?? 0,
+      optimizeBacktest: body.optimizeBacktest !== false
     });
     return NextResponse.json({ ok: true, result });
   } catch (error) {
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
       includeBacktest: request.nextUrl.searchParams.get('includeBacktest') === 'true',
       steps,
       rosterLimit: numberOrNull(request.nextUrl.searchParams.get('limit')),
-      rosterOffset: numberOrNull(request.nextUrl.searchParams.get('offset')) ?? 0
+      rosterOffset: numberOrNull(request.nextUrl.searchParams.get('offset')) ?? 0,
+      optimizeBacktest: request.nextUrl.searchParams.get('optimizeBacktest') !== 'false'
     });
     return NextResponse.json({ ok: true, result });
   } catch (error) {

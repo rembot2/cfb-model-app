@@ -1,0 +1,102 @@
+name: Refresh CFB model
+
+on:
+  schedule:
+    # Monday at 6:00 AM Central during daylight-saving time.
+    - cron: '0 11 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfb-model-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MODEL_URL: https://cfb-model-app.vercel.app/api/jobs/update
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+    steps:
+      - name: Check configuration
+        shell: bash
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Missing the CRON_SECRET repository secret."
+            exit 1
+          fi
+
+      - name: Refresh 2026 source data
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          update() {
+            local payload="$1"
+            echo "Running: $payload"
+            curl --fail-with-body --silent --show-error --retry 2 --max-time 300 \
+              --request POST "$MODEL_URL" \
+              --header "Authorization: Bearer $CRON_SECRET" \
+              --header "Content-Type: application/json" \
+              --data "$payload"
+            echo
+          }
+
+          update '{"season":2026,"step":"teams,games"}'
+          update '{"season":2026,"step":"stats"}'
+          update '{"season":2026,"step":"rosters","limit":20,"offset":0}'
+          update '{"season":2026,"step":"rosters","limit":20,"offset":20}'
+          update '{"season":2026,"step":"rosters","limit":20,"offset":40}'
+          update '{"season":2026,"step":"rosters","limit":20,"offset":60}'
+
+      - name: Recalculate ratings and predictions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for season in 2022 2023 2024 2025 2026; do
+            echo "Calculating ratings for $season"
+            curl --fail-with-body --silent --show-error --retry 2 --max-time 300 \
+              --request POST "$MODEL_URL" \
+              --header "Authorization: Bearer $CRON_SECRET" \
+              --header "Content-Type: application/json" \
+              --data "{\"season\":$season,\"step\":\"ratings,predictions\"}"
+            echo
+          done
+
+      - name: Optimize and rebuild backtests
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Optimizing against all completed seasons"
+          curl --fail-with-body --silent --show-error --retry 2 --max-time 300 \
+            --request POST "$MODEL_URL" \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            --header "Content-Type: application/json" \
+            --data '{"season":2026,"step":"backtest","optimizeBacktest":true}'
+          echo
+
+          for season in 2022 2023 2024 2025; do
+            echo "Rebuilding backtest for $season with active optimized weights"
+            curl --fail-with-body --silent --show-error --retry 2 --max-time 300 \
+              --request POST "$MODEL_URL" \
+              --header "Authorization: Bearer $CRON_SECRET" \
+              --header "Content-Type: application/json" \
+              --data "{\"season\":$season,\"step\":\"backtest\",\"optimizeBacktest\":false}"
+            echo
+          done
+
+      - name: Regenerate 2026 predictions with optimized weights
+        shell: bash
+        run: |
+          curl --fail-with-body --silent --show-error --retry 2 --max-time 300 \
+            --request POST "$MODEL_URL" \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            --header "Content-Type: application/json" \
+            --data '{"season":2026,"step":"predictions"}'
+          echo

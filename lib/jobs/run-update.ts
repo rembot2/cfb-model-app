@@ -13,6 +13,7 @@ type UpdateOptions = {
   steps?: UpdateStep[];
   rosterLimit?: number | null;
   rosterOffset?: number;
+  optimizeBacktest?: boolean;
 };
 
 export type UpdateStep = 'teams' | 'games' | 'stats' | 'rosters' | 'ratings' | 'predictions' | 'backtest';
@@ -50,7 +51,7 @@ export async function runModelUpdate(options: UpdateOptions) {
     }
     if (steps.has('ratings')) result.ratings = await calculateRatings(options.season);
     if (steps.has('predictions')) result.predictions = await generatePredictions(options.season);
-    if (steps.has('backtest')) result.backtest = await runBacktest(options.season);
+    if (steps.has('backtest')) result.backtest = await runBacktest(options.season, options.optimizeBacktest !== false);
 
     await supabase
       .from('job_runs')
@@ -330,10 +331,12 @@ async function generatePredictions(season: number) {
   return { season, status: 'success', count: rows.length };
 }
 
-async function runBacktest(season: number) {
+async function runBacktest(season: number, optimize = true) {
   const supabase = getServiceSupabase();
-  const optimizationSeason = await getLatestCompletedSeason();
-  const optimizerRows = await runOptimizerThroughSeason(optimizationSeason ?? season);
+  const optimizationSeason = optimize ? await getLatestCompletedSeason() : null;
+  const optimizerRows = optimize
+    ? await runOptimizerThroughSeason(optimizationSeason ?? season)
+    : { status: 'reused' as const, count: 0, best: null };
   const config = optimizerRows.best
     ? { weights: optimizerRows.best.weights, calibration: optimizerRows.best.calibration }
     : await loadActiveModelConfig();

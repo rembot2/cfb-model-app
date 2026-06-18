@@ -36,3 +36,35 @@ export async function fetchTable(table: string, limit = 500) {
   if (error) throw new Error(error.message);
   return data ?? [];
 }
+
+export async function fetchRatingsSeason(requestedSeason?: number) {
+  const supabase = getPublicSupabase();
+  const seasonResult = await supabase
+    .from('ratings')
+    .select('season')
+    .order('season', { ascending: false })
+    .limit(1000);
+
+  if (seasonResult.error) throw new Error(seasonResult.error.message);
+
+  const seasons = [...new Set(
+    (seasonResult.data ?? [])
+      .map(row => Number(row.season))
+      .filter(Number.isFinite)
+  )].sort((a, b) => b - a);
+  const season = requestedSeason && seasons.includes(requestedSeason)
+    ? requestedSeason
+    : seasons[0];
+
+  if (!season) return { seasons, season: null, rows: [] };
+
+  const ratingsResult = await supabase
+    .from('ratings')
+    .select('*')
+    .eq('season', season)
+    .order('composite', { ascending: false })
+    .limit(250);
+
+  if (ratingsResult.error) throw new Error(ratingsResult.error.message);
+  return { seasons, season, rows: ratingsResult.data ?? [] };
+}

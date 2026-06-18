@@ -93,7 +93,7 @@ a {
 .topbar {
   display: flex;
   justify-content: space-between;
-  align-items: end;
+  align-items: flex-end;
   gap: 16px;
   margin-bottom: 18px;
 }
@@ -108,6 +108,37 @@ a {
 h2 {
   margin: 2px 0 0;
   font-size: 28px;
+}
+
+.page-subtitle {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.season-picker {
+  display: grid;
+  gap: 5px;
+  min-width: 130px;
+}
+
+.season-picker span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.season-picker select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 7px 34px 7px 10px;
+  font: inherit;
+  font-weight: 700;
 }
 
 .grid {

@@ -10,6 +10,17 @@ export function ratingFromRow(row: Record<string, unknown>): Rating {
     passOff: numberValue(row.pass_off_rating),
     rushDef: numberValue(row.rush_def_rating),
     passDef: numberValue(row.pass_def_rating),
+    qbRating: row.qb_rating == null ? null : numberValue(row.qb_rating),
+    rbRating: row.rb_rating == null ? null : numberValue(row.rb_rating),
+    wrRating: row.wr_rating == null ? null : numberValue(row.wr_rating),
+    teRating: row.te_rating == null ? null : numberValue(row.te_rating),
+    olRating: row.ol_rating == null ? null : numberValue(row.ol_rating),
+    dlRating: row.dl_rating == null ? null : numberValue(row.dl_rating),
+    lbRating: row.lb_rating == null ? null : numberValue(row.lb_rating),
+    cbRating: row.cb_rating == null ? null : numberValue(row.cb_rating),
+    sRating: row.s_rating == null ? null : numberValue(row.s_rating),
+    kRating: row.k_rating == null ? null : numberValue(row.k_rating),
+    pRating: row.p_rating == null ? null : numberValue(row.p_rating),
     passRate: row.pass_rate === undefined ? null : numberValue(row.pass_rate)
   };
 }

@@ -228,7 +228,11 @@ async function calculateRatings(season: number) {
       talentWeight: 0.4,
       // Historical ratings should retain every team with performance data.
       // The preseason 2026 model is intentionally limited to seeded rosters.
-      requireTalent: season >= 2026
+      requireTalent: season >= 2026,
+      rosterPlayers: rosterRows,
+      historicalPositionTalentWeight: 0.30,
+      preseasonPositionTalentWeight: 0.70,
+      performanceTrust: 0.82
     }
   );
 
@@ -243,6 +247,17 @@ async function calculateRatings(season: number) {
     pass_off_rating: rating.passOff,
     rush_def_rating: rating.rushDef,
     pass_def_rating: rating.passDef,
+    qb_rating: rating.qbRating,
+    rb_rating: rating.rbRating,
+    wr_rating: rating.wrRating,
+    te_rating: rating.teRating,
+    ol_rating: rating.olRating,
+    dl_rating: rating.dlRating,
+    lb_rating: rating.lbRating,
+    cb_rating: rating.cbRating,
+    s_rating: rating.sRating,
+    k_rating: rating.kRating,
+    p_rating: rating.pRating,
     source: 'app',
     synced_at: new Date().toISOString()
   }));
@@ -539,6 +554,17 @@ async function loadRatings(season: number) {
         passOff: numberOrNull(row.pass_off_rating) ?? numberOrNull(row.off_rating) ?? 75,
         rushDef: numberOrNull(row.rush_def_rating) ?? numberOrNull(row.def_rating) ?? 75,
         passDef: numberOrNull(row.pass_def_rating) ?? numberOrNull(row.def_rating) ?? 75,
+        qbRating: numberOrNull(row.qb_rating),
+        rbRating: numberOrNull(row.rb_rating),
+        wrRating: numberOrNull(row.wr_rating),
+        teRating: numberOrNull(row.te_rating),
+        olRating: numberOrNull(row.ol_rating),
+        dlRating: numberOrNull(row.dl_rating),
+        lbRating: numberOrNull(row.lb_rating),
+        cbRating: numberOrNull(row.cb_rating),
+        sRating: numberOrNull(row.s_rating),
+        kRating: numberOrNull(row.k_rating),
+        pRating: numberOrNull(row.p_rating),
         passRate: 0.5,
         games: numberOrNull(row.games)
       } satisfies Rating

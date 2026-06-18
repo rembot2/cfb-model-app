@@ -30,7 +30,18 @@ export default async function RatingsPage({ searchParams }: { searchParams?: { s
           { label: 'Rush Off', className: 'num', render: row => fmt(row.rush_off_rating) },
           { label: 'Pass Off', className: 'num', render: row => fmt(row.pass_off_rating) },
           { label: 'Rush Def', className: 'num', render: row => fmt(row.rush_def_rating) },
-          { label: 'Pass Def', className: 'num', render: row => fmt(row.pass_def_rating) }
+          { label: 'Pass Def', className: 'num', render: row => fmt(row.pass_def_rating) },
+          { label: 'QB', className: 'num', render: row => fmt(row.qb_rating) },
+          { label: 'RB', className: 'num', render: row => fmt(row.rb_rating) },
+          { label: 'WR', className: 'num', render: row => fmt(row.wr_rating) },
+          { label: 'TE', className: 'num', render: row => fmt(row.te_rating) },
+          { label: 'OL', className: 'num', render: row => fmt(row.ol_rating) },
+          { label: 'DL', className: 'num', render: row => fmt(row.dl_rating) },
+          { label: 'LB', className: 'num', render: row => fmt(row.lb_rating) },
+          { label: 'CB', className: 'num', render: row => fmt(row.cb_rating) },
+          { label: 'S', className: 'num', render: row => fmt(row.s_rating) },
+          { label: 'K', className: 'num', render: row => fmt(row.k_rating) },
+          { label: 'P', className: 'num', render: row => fmt(row.p_rating) }
         ]}
       />
     </>

@@ -7,6 +7,17 @@ export type Rating = {
   passOff: number;
   rushDef: number;
   passDef: number;
+  qbRating?: number | null;
+  rbRating?: number | null;
+  wrRating?: number | null;
+  teRating?: number | null;
+  olRating?: number | null;
+  dlRating?: number | null;
+  lbRating?: number | null;
+  cbRating?: number | null;
+  sRating?: number | null;
+  kRating?: number | null;
+  pRating?: number | null;
   passRate?: number | null;
   games?: number | null;
 };

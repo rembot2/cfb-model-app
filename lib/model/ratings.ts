@@ -19,6 +19,30 @@ export type RawTeamGameStat = {
   pass_rate_off?: number | null;
 };
 
+export type RawRosterPlayer = {
+  team: string;
+  position: string | null;
+  rating: number | string | null;
+};
+
+type PositionGroup = 'QB' | 'RB' | 'WR' | 'TE' | 'OL' | 'DL' | 'LB' | 'CB' | 'S' | 'K' | 'P';
+type PositionRatings = Record<PositionGroup, number>;
+
+const POSITION_GROUPS: PositionGroup[] = ['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'CB', 'S', 'K', 'P'];
+const POSITION_DEPTH_LIMITS: Record<PositionGroup, number> = {
+  QB: 1,
+  RB: 3,
+  WR: 5,
+  TE: 3,
+  OL: 7,
+  DL: 6,
+  LB: 5,
+  CB: 4,
+  S: 3,
+  K: 1,
+  P: 1
+};
+
 export type RatingOptions = {
   season: number;
   recencyWeight?: number;
@@ -26,6 +50,10 @@ export type RatingOptions = {
   talentWeight?: number;
   seasons?: number[];
   requireTalent?: boolean;
+  rosterPlayers?: RawRosterPlayer[];
+  historicalPositionTalentWeight?: number;
+  preseasonPositionTalentWeight?: number;
+  performanceTrust?: number;
 };
 
 type RawRating = {
@@ -90,6 +118,14 @@ export function calculateTeamRatings(
   const zRushDef = zScore(teams.map((team) => adjusted.rushDef[team])).map((z) => -z);
   const zPassOff = zScore(teams.map((team) => adjusted.passOff[team]));
   const zPassDef = zScore(teams.map((team) => adjusted.passDef[team])).map((z) => -z);
+  const positionModel = options.rosterPlayers
+    ? buildPositionGroupRatings(teams, options.rosterPlayers)
+    : null;
+  const positionTalentSplit = season >= 2026
+    ? clamp(options.preseasonPositionTalentWeight ?? 0.70, 0, 1)
+    : clamp(options.historicalPositionTalentWeight ?? 0.30, 0, 0.60);
+  const performanceSplit = 1 - positionTalentSplit;
+  const performanceTrust = clamp(options.performanceTrust ?? 0.82, 0, 1);
 
   const rawRows = teams.map((team, index) => {
     const rawOffZ = (zPpaOff[index] + zSucOff[index] + zPpdOff[index]) / 3;
@@ -98,10 +134,28 @@ export function calculateTeamRatings(
     const perfScore = ((rawOffZ + rawDefZ) / 2) * 15;
     const compositeRaw = perfScore * (1 - talentWeight) + talent * 10 * talentWeight;
 
-    const rushOffRaw = zRushOff[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
-    const passOffRaw = zPassOff[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
-    const rushDefRaw = zRushDef[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
-    const passDefRaw = zPassDef[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
+    const positions = positionModel?.ratings[team];
+    const rushOffTalent = positions ? positions.RB * 0.45 + positions.OL * 0.55 : 10;
+    const passOffTalent = positions
+      ? positions.QB * 0.40 + positions.WR * 0.25 + positions.TE * 0.10 + positions.OL * 0.25
+      : 10;
+    const rushDefTalent = positions ? positions.DL * 0.55 + positions.LB * 0.45 : 10;
+    const passDefTalent = positions
+      ? positions.DL * 0.30 + positions.CB * 0.40 + positions.S * 0.30
+      : 10;
+
+    const rushOffRaw = positions
+      ? ((rushOffTalent - 10) / 3) * 15 * positionTalentSplit + zRushOff[index] * performanceTrust * performanceSplit * 15
+      : zRushOff[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
+    const passOffRaw = positions
+      ? ((passOffTalent - 10) / 3) * 15 * positionTalentSplit + zPassOff[index] * performanceTrust * performanceSplit * 15
+      : zPassOff[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
+    const rushDefRaw = positions
+      ? ((rushDefTalent - 10) / 3) * 15 * positionTalentSplit + zRushDef[index] * performanceTrust * performanceSplit * 15
+      : zRushDef[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
+    const passDefRaw = positions
+      ? ((passDefTalent - 10) / 3) * 15 * positionTalentSplit + zPassDef[index] * performanceTrust * performanceSplit * 15
+      : zPassDef[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
 
     return {
       team,
@@ -113,7 +167,9 @@ export function calculateTeamRatings(
       rushOffRaw,
       passOffRaw,
       rushDefRaw,
-      passDefRaw
+      passDefRaw,
+      positionRatings: positions,
+      exactQbRating: positionModel?.topQb[team]
     };
   });
 
@@ -155,11 +211,91 @@ export function calculateTeamRatings(
         passOff,
         rushDef,
         passDef,
+        qbRating: row.exactQbRating ?? row.positionRatings?.QB ?? null,
+        rbRating: row.positionRatings ? scaleRating(row.positionRatings.RB, maxCompositeRaw) : null,
+        wrRating: row.positionRatings ? scaleRating(row.positionRatings.WR, maxCompositeRaw) : null,
+        teRating: row.positionRatings ? scaleRating(row.positionRatings.TE, maxCompositeRaw) : null,
+        olRating: row.positionRatings ? scaleRating(row.positionRatings.OL, maxCompositeRaw) : null,
+        dlRating: row.positionRatings ? scaleRating(row.positionRatings.DL, maxCompositeRaw) : null,
+        lbRating: row.positionRatings ? scaleRating(row.positionRatings.LB, maxCompositeRaw) : null,
+        cbRating: row.positionRatings ? scaleRating(row.positionRatings.CB, maxCompositeRaw) : null,
+        sRating: row.positionRatings ? scaleRating(row.positionRatings.S, maxCompositeRaw) : null,
+        kRating: row.positionRatings ? scaleRating(row.positionRatings.K, maxCompositeRaw) : null,
+        pRating: row.positionRatings ? scaleRating(row.positionRatings.P, maxCompositeRaw) : null,
         passRate: round2(row.passRate),
         games: row.games
       };
     })
     .sort((a, b) => b.composite - a.composite);
+}
+
+function buildPositionGroupRatings(teams: string[], players: RawRosterPlayer[]) {
+  const grouped: Record<string, Partial<Record<PositionGroup, number[]>>> = {};
+  const topQb: Record<string, number> = {};
+
+  for (const player of players) {
+    const group = normalizePositionGroup(player.position);
+    const rating = asNumber(player.rating);
+    if (!player.team || !group || rating === null) continue;
+
+    grouped[player.team] ||= {};
+    grouped[player.team][group] ||= [];
+    grouped[player.team][group]!.push(rating);
+    if (group === 'QB' && (topQb[player.team] === undefined || rating > topQb[player.team])) {
+      topQb[player.team] = rating;
+    }
+  }
+
+  const raw: Record<string, Partial<Record<PositionGroup, number>>> = {};
+  for (const team of teams) {
+    raw[team] = {};
+    for (const group of POSITION_GROUPS) {
+      const values = [...(grouped[team]?.[group] || [])]
+        .sort((a, b) => b - a)
+        .slice(0, POSITION_DEPTH_LIMITS[group]);
+      if (!values.length) continue;
+
+      let weightedSum = 0;
+      let weightSum = 0;
+      for (let index = 0; index < values.length; index++) {
+        const weight = Math.exp(-0.35 * index);
+        weightedSum += values[index] * weight;
+        weightSum += weight;
+      }
+      raw[team][group] = weightedSum / weightSum;
+    }
+  }
+
+  const ratings = Object.fromEntries(teams.map((team) => [team, {}])) as Record<string, PositionRatings>;
+  for (const group of POSITION_GROUPS) {
+    const values = teams.map((team) => raw[team][group]).filter((value): value is number => Number.isFinite(value));
+    const groupMean = mean(values);
+    const groupStd = stdDev(values) || 1;
+    for (const team of teams) {
+      const value = raw[team][group];
+      ratings[team][group] = value !== undefined
+        ? round2(10 + ((value - groupMean) / groupStd) * 3)
+        : 10;
+    }
+  }
+
+  return { ratings, topQb };
+}
+
+function normalizePositionGroup(position: unknown): PositionGroup | null {
+  const value = String(position || '').toUpperCase().trim();
+  if (value === 'QB') return 'QB';
+  if (['RB', 'HB', 'FB'].includes(value)) return 'RB';
+  if (value === 'WR') return 'WR';
+  if (value === 'TE') return 'TE';
+  if (['OL', 'OT', 'IOL', 'OG', 'C'].includes(value)) return 'OL';
+  if (['DL', 'EDGE', 'DE', 'DT', 'NT'].includes(value)) return 'DL';
+  if (['LB', 'ILB', 'OLB'].includes(value)) return 'LB';
+  if (value === 'CB') return 'CB';
+  if (['S', 'SAF'].includes(value)) return 'S';
+  if (['K', 'PK'].includes(value)) return 'K';
+  if (value === 'P') return 'P';
+  return null;
 }
 
 function buildRawOpponentBaseline(rows: RawTeamGameStat[], seasonBaseWeight: Map<number, number>) {
@@ -416,6 +552,10 @@ function asNumber(value: unknown) {
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.max(minimum, Math.min(maximum, value));
 }
 
 function fromTeams(teams: string[], selector: (team: string) => number) {

@@ -25,6 +25,16 @@ export type RawRosterPlayer = {
   rating: number | string | null;
 };
 
+export type RawCoachConfig = {
+  team: string;
+  coach_name?: string | null;
+  tier?: string | null;
+  hire_year?: number | string | null;
+  off_tendency?: number | string | null;
+  def_tendency?: number | string | null;
+  preseason_override?: number | string | null;
+};
+
 type PositionGroup = 'QB' | 'RB' | 'WR' | 'TE' | 'OL' | 'DL' | 'LB' | 'CB' | 'S' | 'K' | 'P';
 type PositionRatings = Record<PositionGroup, number>;
 
@@ -43,6 +53,26 @@ const POSITION_DEPTH_LIMITS: Record<PositionGroup, number> = {
   P: 1
 };
 
+type CoachTier = 'Elite' | 'Good' | 'Average' | 'Concerning' | 'Unknown';
+type CoachRatingConfig = {
+  tier: CoachTier;
+  hireYear: number;
+  offTrust: number;
+  defTrust: number;
+  preseasonOverride: number | null;
+  trajectoryMultiplier: number;
+  meanPull: number;
+  tierBonus: number;
+};
+
+const COACH_TIER_CONFIG: Record<CoachTier, Pick<CoachRatingConfig, 'trajectoryMultiplier' | 'meanPull' | 'tierBonus'>> = {
+  Elite: { trajectoryMultiplier: 2.0, meanPull: 0, tierBonus: 2.0 },
+  Good: { trajectoryMultiplier: 1.5, meanPull: 0, tierBonus: 1.0 },
+  Average: { trajectoryMultiplier: 1.0, meanPull: 0, tierBonus: 0 },
+  Concerning: { trajectoryMultiplier: 0, meanPull: 0.15, tierBonus: -1.5 },
+  Unknown: { trajectoryMultiplier: 0.5, meanPull: 0.25, tierBonus: -0.5 }
+};
+
 export type RatingOptions = {
   season: number;
   recencyWeight?: number;
@@ -54,6 +84,7 @@ export type RatingOptions = {
   historicalPositionTalentWeight?: number;
   preseasonPositionTalentWeight?: number;
   performanceTrust?: number;
+  coaches?: RawCoachConfig[];
 };
 
 type RawRating = {
@@ -89,23 +120,24 @@ export function calculateTeamRatings(
   const recency = options.recencyWeight ?? 2.5;
   const iterations = options.iterations ?? 20;
   const talentWeight = options.talentWeight ?? 0.4;
+  const coachMap = buildCoachMap(options.coaches || [], options.performanceTrust ?? 0.82);
   const seasonBaseWeight = new Map<number, number>();
   for (const s of seasons) {
     seasonBaseWeight.set(s, Math.pow(1 / recency, maxSeason - s));
   }
 
-  const rawRatings0 = buildRawOpponentBaseline(rows, seasonBaseWeight);
+  const rawRatings0 = buildRawOpponentBaseline(rows, seasonBaseWeight, coachMap);
   const leagueAvgOff = mean(Object.values(rawRatings0).map((row) => row.off));
   const leagueStdOff = stdDev(Object.values(rawRatings0).map((row) => row.off)) || 1;
   const maxWeekBySeason = getMaxWeekBySeason(rows);
-  const teamStats = accumulateTeamStats(rows, seasonBaseWeight, rawRatings0, leagueAvgOff, leagueStdOff, maxSeason, maxWeekBySeason);
+  const teamStats = accumulateTeamStats(rows, seasonBaseWeight, rawRatings0, leagueAvgOff, leagueStdOff, maxSeason, maxWeekBySeason, coachMap);
   const rawRatings = finalizeRawRatings(teamStats);
   const teams = Object.keys(rawRatings).filter(
     (team) => !options.requireTalent || talentScores[team] !== undefined
   );
   if (!teams.length) return [];
 
-  const adjusted = opponentAdjust(rawRatings, rows, seasonBaseWeight, iterations);
+  const adjusted = opponentAdjust(rawRatings, rows, seasonBaseWeight, iterations, coachMap);
   const talentZ = zScoreByTeam(teams, talentScores);
 
   const zPpaOff = zScore(teams.map((team) => adjusted.off[team]));
@@ -121,11 +153,7 @@ export function calculateTeamRatings(
   const positionModel = options.rosterPlayers
     ? buildPositionGroupRatings(teams, options.rosterPlayers)
     : null;
-  const positionTalentSplit = season >= 2026
-    ? clamp(options.preseasonPositionTalentWeight ?? 0.70, 0, 1)
-    : clamp(options.historicalPositionTalentWeight ?? 0.30, 0, 0.60);
-  const performanceSplit = 1 - positionTalentSplit;
-  const performanceTrust = clamp(options.performanceTrust ?? 0.82, 0, 1);
+  const trajectory = buildTrajectory(rows, teams, coachMap);
 
   const rawRows = teams.map((team, index) => {
     const rawOffZ = (zPpaOff[index] + zSucOff[index] + zPpdOff[index]) / 3;
@@ -135,6 +163,16 @@ export function calculateTeamRatings(
     const compositeRaw = perfScore * (1 - talentWeight) + talent * 10 * talentWeight;
 
     const positions = positionModel?.ratings[team];
+    const coach = coachMap[team] || defaultCoachConfig(options.performanceTrust ?? 0.82);
+    const coachYears = coach.hireYear > 0 ? season - coach.hireYear : 99;
+    const positionTalentSplit = season >= 2026
+      ? coachYears <= 0
+        ? 0.90
+        : coachYears === 1
+          ? 0.75
+          : clamp(options.preseasonPositionTalentWeight ?? 0.70, 0, 1)
+      : clamp(options.historicalPositionTalentWeight ?? 0.30, 0, 0.60);
+    const performanceSplit = 1 - positionTalentSplit;
     const rushOffTalent = positions ? positions.RB * 0.45 + positions.OL * 0.55 : 10;
     const passOffTalent = positions
       ? positions.QB * 0.40 + positions.WR * 0.25 + positions.TE * 0.10 + positions.OL * 0.25
@@ -145,17 +183,25 @@ export function calculateTeamRatings(
       : 10;
 
     const rushOffRaw = positions
-      ? ((rushOffTalent - 10) / 3) * 15 * positionTalentSplit + zRushOff[index] * performanceTrust * performanceSplit * 15
+      ? ((rushOffTalent - 10) / 3) * 15 * positionTalentSplit + zRushOff[index] * coach.offTrust * performanceSplit * 15
       : zRushOff[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
     const passOffRaw = positions
-      ? ((passOffTalent - 10) / 3) * 15 * positionTalentSplit + zPassOff[index] * performanceTrust * performanceSplit * 15
+      ? ((passOffTalent - 10) / 3) * 15 * positionTalentSplit + zPassOff[index] * coach.offTrust * performanceSplit * 15
       : zPassOff[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
     const rushDefRaw = positions
-      ? ((rushDefTalent - 10) / 3) * 15 * positionTalentSplit + zRushDef[index] * performanceTrust * performanceSplit * 15
+      ? ((rushDefTalent - 10) / 3) * 15 * positionTalentSplit + zRushDef[index] * coach.defTrust * performanceSplit * 15
       : zRushDef[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
     const passDefRaw = positions
-      ? ((passDefTalent - 10) / 3) * 15 * positionTalentSplit + zPassDef[index] * performanceTrust * performanceSplit * 15
+      ? ((passDefTalent - 10) / 3) * 15 * positionTalentSplit + zPassDef[index] * coach.defTrust * performanceSplit * 15
       : zPassDef[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
+
+    const coached = applyPreseasonCoaching(
+      { rushOffRaw, passOffRaw, rushDefRaw, passDefRaw },
+      coach,
+      trajectory[team],
+      performanceSplit,
+      season >= 2026
+    );
 
     return {
       team,
@@ -164,10 +210,7 @@ export function calculateTeamRatings(
       offRaw: (rushOffRaw + passOffRaw) / 2,
       defRaw: (rushDefRaw + passDefRaw) / 2,
       compositeRaw,
-      rushOffRaw,
-      passOffRaw,
-      rushDefRaw,
-      passDefRaw,
+      ...coached,
       positionRatings: positions,
       exactQbRating: positionModel?.topQb[team]
     };
@@ -298,13 +341,131 @@ function normalizePositionGroup(position: unknown): PositionGroup | null {
   return null;
 }
 
-function buildRawOpponentBaseline(rows: RawTeamGameStat[], seasonBaseWeight: Map<number, number>) {
+function buildCoachMap(rows: RawCoachConfig[], defaultTrust: number) {
+  const map: Record<string, CoachRatingConfig> = {};
+  for (const row of rows) {
+    if (!row.team) continue;
+    const requestedTier = String(row.tier || 'Average') as CoachTier;
+    const tier: CoachTier = requestedTier in COACH_TIER_CONFIG ? requestedTier : 'Average';
+    const tierConfig = COACH_TIER_CONFIG[tier];
+    map[row.team] = {
+      tier,
+      hireYear: Math.trunc(asNumber(row.hire_year) || 0),
+      offTrust: tendencyToTrust(row.off_tendency, defaultTrust),
+      defTrust: tendencyToTrust(row.def_tendency, defaultTrust),
+      preseasonOverride: asNumber(row.preseason_override),
+      ...tierConfig
+    };
+  }
+  return map;
+}
+
+function defaultCoachConfig(defaultTrust: number): CoachRatingConfig {
+  return {
+    tier: 'Average',
+    hireYear: 0,
+    offTrust: clamp(defaultTrust, 0, 1),
+    defTrust: clamp(defaultTrust, 0, 1),
+    preseasonOverride: null,
+    ...COACH_TIER_CONFIG.Average
+  };
+}
+
+function tendencyToTrust(value: unknown, fallback: number) {
+  const tendency = Math.trunc(asNumber(value) || 0);
+  const trusts = [0, 0.55, 0.70, 0.82, 0.92, 1.0];
+  return tendency >= 1 && tendency <= 5 ? trusts[tendency] : clamp(fallback, 0, 1);
+}
+
+function preHireDiscount(team: string, season: number, coachMap: Record<string, CoachRatingConfig>) {
+  const coach = coachMap[team];
+  if (!coach?.hireYear || season >= coach.hireYear) return 1;
+  return coach.hireYear - season === 1 ? 0.10 : 0.05;
+}
+
+function buildTrajectory(
+  rows: RawTeamGameStat[],
+  teams: string[],
+  coachMap: Record<string, CoachRatingConfig>
+) {
+  const seasonAverages: Record<string, Record<number, { off: number; def: number; games: number }>> = {};
+  for (const row of rows) {
+    const off = asNumber(row.ppa_off);
+    const def = asNumber(row.ppa_def);
+    if (!row.team || off === null || def === null) continue;
+    seasonAverages[row.team] ||= {};
+    seasonAverages[row.team][row.season] ||= { off: 0, def: 0, games: 0 };
+    seasonAverages[row.team][row.season].off += off;
+    seasonAverages[row.team][row.season].def += def;
+    seasonAverages[row.team][row.season].games += 1;
+  }
+
+  return Object.fromEntries(teams.map((team) => {
+    const coach = coachMap[team] || defaultCoachConfig(0.82);
+    const seasons = Object.keys(seasonAverages[team] || {})
+      .map(Number)
+      .filter((value) => value >= (coach.hireYear || 0))
+      .sort((a, b) => a - b);
+    if (seasons.length < 2) return [team, { off: 0, def: 0 }];
+
+    const previous = seasonAverages[team][seasons[seasons.length - 2]];
+    const current = seasonAverages[team][seasons[seasons.length - 1]];
+    return [team, {
+      off: ((current.off / current.games) - (previous.off / previous.games)) * coach.trajectoryMultiplier,
+      def: ((current.def / current.games) - (previous.def / previous.games)) * coach.trajectoryMultiplier
+    }];
+  })) as Record<string, { off: number; def: number }>;
+}
+
+function applyPreseasonCoaching(
+  ratings: { rushOffRaw: number; passOffRaw: number; rushDefRaw: number; passDefRaw: number },
+  coach: CoachRatingConfig,
+  trajectory: { off: number; def: number } | undefined,
+  performanceSplit: number,
+  applyFullCoaching: boolean
+) {
+  if (!applyFullCoaching) return ratings;
+
+  const trajectorySignal = ((trajectory?.off || 0) - (trajectory?.def || 0)) * 3 * performanceSplit;
+  let rushOffRaw = ratings.rushOffRaw + trajectorySignal;
+  let passOffRaw = ratings.passOffRaw + trajectorySignal;
+  let rushDefRaw = ratings.rushDefRaw + trajectorySignal;
+  let passDefRaw = ratings.passDefRaw + trajectorySignal;
+
+  if (coach.meanPull > 0) {
+    rushOffRaw *= 1 - coach.meanPull;
+    passOffRaw *= 1 - coach.meanPull;
+    rushDefRaw *= 1 - coach.meanPull;
+    passDefRaw *= 1 - coach.meanPull;
+  }
+
+  rushOffRaw += coach.tierBonus * 0.55;
+  passOffRaw += coach.tierBonus * 0.55;
+  rushDefRaw += coach.tierBonus * 0.45;
+  passDefRaw += coach.tierBonus * 0.45;
+
+  if (coach.preseasonOverride !== null) {
+    const overrideInternal = (coach.preseasonOverride - 10) * 3;
+    rushOffRaw = overrideInternal * 0.55;
+    passOffRaw = overrideInternal * 0.55;
+    rushDefRaw = overrideInternal * 0.45;
+    passDefRaw = overrideInternal * 0.45;
+  }
+
+  return { rushOffRaw, passOffRaw, rushDefRaw, passDefRaw };
+}
+
+function buildRawOpponentBaseline(
+  rows: RawTeamGameStat[],
+  seasonBaseWeight: Map<number, number>,
+  coachMap: Record<string, CoachRatingConfig>
+) {
   const rawAvg: Record<string, { off: number; def: number; w: number }> = {};
   for (const row of rows) {
     const ppaOff = asNumber(row.ppa_off);
     const ppaDef = asNumber(row.ppa_def);
     if (ppaOff === null || ppaDef === null) continue;
-    const sw = seasonBaseWeight.get(row.season) || 1;
+    const sw = (seasonBaseWeight.get(row.season) || 1) * preHireDiscount(row.team, row.season, coachMap);
     rawAvg[row.team] ||= { off: 0, def: 0, w: 0 };
     rawAvg[row.team].off += ppaOff * sw;
     rawAvg[row.team].def += ppaDef * sw;
@@ -325,7 +486,8 @@ function accumulateTeamStats(
   leagueAvgOff: number,
   leagueStdOff: number,
   maxSeason: number,
-  maxWeekBySeason: Record<number, number>
+  maxWeekBySeason: Record<number, number>,
+  coachMap: Record<string, CoachRatingConfig>
 ) {
   const teamStats: Record<string, any> = {};
 
@@ -334,7 +496,7 @@ function accumulateTeamStats(
     const ppaDef = asNumber(row.ppa_def);
     if (ppaOff === null || ppaDef === null) continue;
 
-    const sw = seasonBaseWeight.get(row.season) || 1;
+    const sw = (seasonBaseWeight.get(row.season) || 1) * preHireDiscount(row.team, row.season, coachMap);
     const oppRating = rawRatings0[row.opponent];
     const oppQuality = oppRating
       ? Math.max(0.25, Math.min(2.5, Math.pow(2, (oppRating.off - leagueAvgOff) / leagueStdOff)))
@@ -409,7 +571,8 @@ function opponentAdjust(
   rawRatings: Record<string, RawRating>,
   rows: RawTeamGameStat[],
   seasonBaseWeight: Map<number, number>,
-  iterations: number
+  iterations: number,
+  coachMap: Record<string, CoachRatingConfig>
 ) {
   const teams = Object.keys(rawRatings);
   const teamOpponents: Record<string, Array<{ opp: string; w: number }>> = {};
@@ -417,7 +580,10 @@ function opponentAdjust(
   for (const row of rows) {
     if (!rawRatings[row.team] || !rawRatings[row.opponent]) continue;
     teamOpponents[row.team] ||= [];
-    teamOpponents[row.team].push({ opp: row.opponent, w: seasonBaseWeight.get(row.season) || 1 });
+    teamOpponents[row.team].push({
+      opp: row.opponent,
+      w: (seasonBaseWeight.get(row.season) || 1) * preHireDiscount(row.team, row.season, coachMap)
+    });
   }
 
   let off = fromTeams(teams, (team) => rawRatings[team].ppaOff);
@@ -546,6 +712,7 @@ function normalizeRate(value: unknown) {
 }
 
 function asNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
 }

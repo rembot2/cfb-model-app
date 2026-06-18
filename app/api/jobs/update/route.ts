@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
 function parseSteps(value: unknown): UpdateStep[] | undefined {
   if (!value) return undefined;
-  const allowed = new Set<UpdateStep>(['teams', 'games', 'stats', 'rosters', 'ratings', 'predictions', 'backtest']);
+  const allowed = new Set<UpdateStep>(['teams', 'games', 'stats', 'rosters', 'coaches', 'ratings', 'predictions', 'backtest']);
   const raw = Array.isArray(value) ? value.join(',') : String(value);
   const steps = raw
     .split(',')

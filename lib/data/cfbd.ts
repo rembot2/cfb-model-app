@@ -53,6 +53,19 @@ export type CfbdBettingLine = {
   }>;
 };
 
+export type CfbdCoachSeason = {
+  school?: string;
+  year?: number;
+  season?: number;
+};
+
+export type CfbdCoach = {
+  firstName?: string;
+  lastName?: string;
+  hireDate?: string | null;
+  seasons?: CfbdCoachSeason[];
+};
+
 export class CfbdClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
@@ -90,6 +103,10 @@ export class CfbdClient {
 
   async getTeamSeasonStats(year: number) {
     return this.request<CfbdTeamSeasonStat[]>(`/stats/season?year=${year}`);
+  }
+
+  async getCoaches(year: number) {
+    return this.request<CfbdCoach[]>(`/coaches?year=${year}`);
   }
 
   async getSeasonGamesAndPostseason(year: number) {

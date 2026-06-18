@@ -46,7 +46,7 @@ jobs:
             echo
           }
 
-          update '{"season":2026,"step":"teams,games"}'
+          update '{"season":2026,"step":"teams,games,coaches"}'
           update '{"season":2026,"step":"stats"}'
           update '{"season":2026,"step":"rosters","limit":20,"offset":0}'
           update '{"season":2026,"step":"rosters","limit":20,"offset":20}'

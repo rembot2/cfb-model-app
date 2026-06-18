@@ -225,7 +225,10 @@ async function calculateRatings(season: number) {
       season,
       recencyWeight: 2.5,
       iterations: 20,
-      talentWeight: 0.4
+      talentWeight: 0.4,
+      // Historical ratings should retain every team with performance data.
+      // The preseason 2026 model is intentionally limited to seeded rosters.
+      requireTalent: season >= 2026
     }
   );
 

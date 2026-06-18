@@ -1,11 +1,14 @@
 import { Table } from '@/components/Table';
-import { fetchTable } from '@/lib/db/queries';
+import { SeasonSelect } from '@/components/SeasonSelect';
+import { fetchRatingsSeason } from '@/lib/db/queries';
 
 export const dynamic = 'force-dynamic';
 
-export default async function RatingsPage() {
-  const rows = await fetchTable('ratings', 500);
-  rows.sort((a, b) => Number(b.season) - Number(a.season) || Number(b.composite || 0) - Number(a.composite || 0));
+export default async function RatingsPage({ searchParams }: { searchParams?: { season?: string } }) {
+  const requestedSeason = Number(searchParams?.season);
+  const { rows, seasons, season } = await fetchRatingsSeason(
+    Number.isFinite(requestedSeason) ? requestedSeason : undefined
+  );
 
   return (
     <>
@@ -13,12 +16,13 @@ export default async function RatingsPage() {
         <div>
           <div className="eyebrow">Ratings</div>
           <h2>Team Ratings</h2>
+          <div className="page-subtitle">{rows.length} teams</div>
         </div>
+        <SeasonSelect seasons={seasons} selected={season} />
       </header>
       <Table
         rows={rows}
         columns={[
-          { label: 'Season', className: 'num', render: row => String(row.season ?? '') },
           { label: 'Team', render: row => String(row.team ?? '') },
           { label: 'Composite', className: 'num', render: row => fmt(row.composite) },
           { label: 'Off', className: 'num', render: row => fmt(row.off_rating) },

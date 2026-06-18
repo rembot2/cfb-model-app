@@ -25,6 +25,7 @@ export type RatingOptions = {
   iterations?: number;
   talentWeight?: number;
   seasons?: number[];
+  requireTalent?: boolean;
 };
 
 type RawRating = {
@@ -71,7 +72,9 @@ export function calculateTeamRatings(
   const maxWeekBySeason = getMaxWeekBySeason(rows);
   const teamStats = accumulateTeamStats(rows, seasonBaseWeight, rawRatings0, leagueAvgOff, leagueStdOff, maxSeason, maxWeekBySeason);
   const rawRatings = finalizeRawRatings(teamStats);
-  const teams = Object.keys(rawRatings).filter((team) => talentScores[team] !== undefined || Object.keys(talentScores).length === 0);
+  const teams = Object.keys(rawRatings).filter(
+    (team) => !options.requireTalent || talentScores[team] !== undefined
+  );
   if (!teams.length) return [];
 
   const adjusted = opponentAdjust(rawRatings, rows, seasonBaseWeight, iterations);
@@ -114,14 +117,32 @@ export function calculateTeamRatings(
     };
   });
 
-  const maxCompositeRaw = Math.max(...rawRows.map((row) => row.compositeRaw), 10.1);
+  const displayRows = rawRows.map((row) => {
+    const rushOffDisplay = 10 + row.rushOffRaw / 3;
+    const passOffDisplay = 10 + row.passOffRaw / 3;
+    const rushDefDisplay = 10 + row.rushDefRaw / 3;
+    const passDefDisplay = 10 + row.passDefRaw / 3;
+    const offDisplay = (rushOffDisplay + passOffDisplay) / 2;
+    const defDisplay = (rushDefDisplay + passDefDisplay) / 2;
 
-  return rawRows
+    return {
+      ...row,
+      rushOffDisplay,
+      passOffDisplay,
+      rushDefDisplay,
+      passDefDisplay,
+      compositeDisplay: (offDisplay + defDisplay) / 2
+    };
+  });
+
+  const maxCompositeRaw = Math.max(...displayRows.map((row) => row.compositeDisplay), 10.1);
+
+  return displayRows
     .map((row) => {
-      const rushOff = scaleRating(row.rushOffRaw, maxCompositeRaw);
-      const passOff = scaleRating(row.passOffRaw, maxCompositeRaw);
-      const rushDef = scaleRating(row.rushDefRaw, maxCompositeRaw);
-      const passDef = scaleRating(row.passDefRaw, maxCompositeRaw);
+      const rushOff = scaleRating(row.rushOffDisplay, maxCompositeRaw);
+      const passOff = scaleRating(row.passOffDisplay, maxCompositeRaw);
+      const rushDef = scaleRating(row.rushDefDisplay, maxCompositeRaw);
+      const passDef = scaleRating(row.passDefDisplay, maxCompositeRaw);
       const offRating = round2((rushOff + passOff) / 2);
       const defRating = round2((rushDef + passDef) / 2);
 
@@ -400,4 +421,3 @@ function round2(value: number) {
 function fromTeams(teams: string[], selector: (team: string) => number) {
   return Object.fromEntries(teams.map((team) => [team, selector(team)]));
 }
-

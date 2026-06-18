@@ -16,7 +16,7 @@ type UpdateOptions = {
   optimizeBacktest?: boolean;
 };
 
-export type UpdateStep = 'teams' | 'games' | 'stats' | 'rosters' | 'ratings' | 'predictions' | 'backtest';
+export type UpdateStep = 'teams' | 'games' | 'stats' | 'rosters' | 'coaches' | 'ratings' | 'predictions' | 'backtest';
 
 export async function runModelUpdate(options: UpdateOptions) {
   const supabase = getServiceSupabase();
@@ -43,6 +43,7 @@ export async function runModelUpdate(options: UpdateOptions) {
     if (steps.has('teams')) result.teams = await fetchTeams(options.season);
     if (steps.has('games')) result.games = await fetchGames(options.season);
     if (steps.has('stats')) result.stats = await fetchTeamGameStats(options.season);
+    if (steps.has('coaches')) result.coaches = await fetchCoaches(options.season);
     if (steps.has('rosters')) {
       result.rosters = await fetchRosters(options.season, {
         limit: options.rosterLimit,
@@ -79,7 +80,7 @@ export async function runModelUpdate(options: UpdateOptions) {
 
 function normalizeSteps(options: UpdateOptions) {
   if (options.steps?.length) return new Set(options.steps);
-  const defaults: UpdateStep[] = ['teams', 'games', 'stats', 'rosters', 'ratings', 'predictions'];
+  const defaults: UpdateStep[] = ['teams', 'games', 'stats', 'rosters', 'coaches', 'ratings', 'predictions'];
   if (options.includeBacktest) defaults.push('backtest');
   return new Set(defaults);
 }
@@ -101,6 +102,79 @@ async function fetchTeams(season: number) {
 
   await upsertRows(supabase, 'teams', rows, 'school');
   return { season, status: 'success', count: rows.length };
+}
+
+async function fetchCoaches(season: number) {
+  const supabase = getServiceSupabase();
+  const cfbd = new CfbdClient();
+  let coaches = [] as Awaited<ReturnType<CfbdClient['getCoaches']>>;
+  let sourceSeason = season;
+  try {
+    coaches = await cfbd.getCoaches(season);
+  } catch (error) {
+    if (season <= 2022) throw error;
+  }
+  if (!coaches.length && season > 2022) {
+    sourceSeason = season - 1;
+    coaches = await cfbd.getCoaches(sourceSeason);
+  }
+
+  const [{ data: existingRows, error: existingError }, { data: teamRows, error: teamError }] = await Promise.all([
+    supabase.from('coach_configs').select('*'),
+    supabase.from('teams').select('school').order('school', { ascending: true })
+  ]);
+  if (existingError) throw existingError;
+  if (teamError) throw teamError;
+
+  const existing = new Map((existingRows || []).map((row) => [String(row.team), row]));
+  const imported = new Map<string, { coachName: string; hireYear: number | null }>();
+
+  for (const coach of coaches) {
+    const seasons = Array.isArray(coach.seasons) ? coach.seasons : [];
+    const targetSeason = seasons.find((row) => Number(row.year ?? row.season) === sourceSeason) ||
+      seasons
+        .filter((row) => Number(row.year ?? row.season) <= sourceSeason)
+        .sort((a, b) => Number(b.year ?? b.season) - Number(a.year ?? a.season))[0];
+    const team = String(targetSeason?.school || '').trim();
+    if (!team) continue;
+
+    const teamYears = seasons
+      .filter((row) => String(row.school || '').trim() === team)
+      .map((row) => Number(row.year ?? row.season))
+      .filter(Number.isFinite);
+    const dateYear = coach.hireDate ? new Date(coach.hireDate).getUTCFullYear() : NaN;
+    const hireYear = teamYears.length ? Math.min(...teamYears) : Number.isFinite(dateYear) ? dateYear : null;
+    const coachName = `${coach.firstName || ''} ${coach.lastName || ''}`.trim();
+    imported.set(team, { coachName, hireYear });
+  }
+
+  const rows = (teamRows || []).map((teamRow) => {
+    const team = String(teamRow.school);
+    const prior = existing.get(team);
+    const fromCfbd = imported.get(team);
+    const lockIdentity = prior?.source === 'manual' && Boolean(prior?.coach_name);
+    return {
+      team,
+      coach_name: lockIdentity ? prior.coach_name : fromCfbd?.coachName || prior?.coach_name || null,
+      tier: prior?.tier || 'Average',
+      hire_year: lockIdentity ? prior.hire_year : fromCfbd?.hireYear ?? prior?.hire_year ?? null,
+      off_tendency: prior?.off_tendency ?? 3,
+      def_tendency: prior?.def_tendency ?? 3,
+      preseason_override: prior?.preseason_override ?? null,
+      notes: prior?.notes ?? null,
+      source: lockIdentity ? 'manual' : fromCfbd ? 'cfbd' : prior?.source || 'manual',
+      updated_at: new Date().toISOString()
+    };
+  });
+
+  await upsertRows(supabase, 'coach_configs', rows, 'team');
+  return {
+    season,
+    sourceSeason,
+    status: 'success',
+    count: rows.length,
+    matched: imported.size
+  };
 }
 
 async function fetchGames(season: number) {
@@ -218,6 +292,11 @@ async function calculateRatings(season: number) {
     if (!data || data.length < pageSize) break;
   }
 
+  const { data: coachRows, error: coachError } = await supabase
+    .from('coach_configs')
+    .select('team,coach_name,tier,hire_year,off_tendency,def_tendency,preseason_override');
+  if (coachError) throw coachError;
+
   const talentScores = buildTalentScores(rosterRows, season);
   const ratings = calculateTeamRatings(
     statRows.map(mapRawStatRow),
@@ -233,7 +312,8 @@ async function calculateRatings(season: number) {
       rosterPlayers: rosterRows,
       historicalPositionTalentWeight: 0.30,
       preseasonPositionTalentWeight: 0.70,
-      performanceTrust: 0.82
+      performanceTrust: 0.82,
+      coaches: coachRows || []
     }
   );
 

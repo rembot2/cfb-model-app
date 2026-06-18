@@ -17,7 +17,7 @@ Never put the secret directly in the workflow file or a browser URL.
 
 ## What the workflow does
 
-1. Refreshes 2026 teams, games, advanced stats, and four roster batches.
+1. Refreshes 2026 teams, games, coaches, advanced stats, and four roster batches.
 2. Recalculates ratings and predictions for 2022 through 2026.
 3. Runs the optimizer once using all completed seasons and activates rank 1.
 4. Rebuilds every historical backtest with that active optimized configuration.

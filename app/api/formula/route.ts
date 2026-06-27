@@ -1,0 +1,81 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getServiceSupabase } from '@/lib/db/client';
+import { DEFAULT_CALIBRATION, DEFAULT_WEIGHTS, normalizeWeights } from '@/lib/model/predict';
+import type { ModelCalibration, ModelWeights } from '@/lib/model/types';
+
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+  const secret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || body.secret;
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const weights = normalizeWeights({
+    pass: numberOrDefault(body.passWeight, DEFAULT_WEIGHTS.pass),
+    rush: numberOrDefault(body.rushWeight, DEFAULT_WEIGHTS.rush),
+    overall: numberOrDefault(body.overallWeight, DEFAULT_WEIGHTS.overall),
+    composite: numberOrDefault(body.compositeWeight, DEFAULT_WEIGHTS.composite)
+  });
+  const calibration: ModelCalibration = {
+    pointsPerRating: numberOrDefault(body.pointsPerRating, DEFAULT_CALIBRATION.pointsPerRating),
+    homeField: numberOrDefault(body.homeField, DEFAULT_CALIBRATION.homeField),
+    marginShrink: numberOrDefault(body.marginShrink, DEFAULT_CALIBRATION.marginShrink),
+    maxMargin: numberOrDefault(body.maxMargin, DEFAULT_CALIBRATION.maxMargin)
+  };
+  const name = cleanName(body.name) || `manual-${new Date().toISOString().slice(0, 19)}`;
+
+  try {
+    const supabase = getServiceSupabase();
+    const now = new Date().toISOString();
+    const inactive = await supabase
+      .from('model_configs')
+      .update({ is_active: false, updated_at: now })
+      .eq('is_active', true);
+    if (inactive.error) throw inactive.error;
+
+    const saved = await supabase
+      .from('model_configs')
+      .upsert({
+        name,
+        pass_weight: weights.pass,
+        rush_weight: weights.rush,
+        overall_weight: weights.overall,
+        composite_weight: weights.composite,
+        points_per_rating: calibration.pointsPerRating,
+        home_field: calibration.homeField,
+        margin_shrink: calibration.marginShrink,
+        max_margin: calibration.maxMargin,
+        is_active: true,
+        updated_at: now
+      }, { onConflict: 'name' })
+      .select('*')
+      .single();
+    if (saved.error) throw saved.error;
+
+    return NextResponse.json({ ok: true, config: saved.data });
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: errorMessage(error) }, { status: 500 });
+  }
+}
+
+function numberOrDefault(value: unknown, fallback: number) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function cleanName(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .replace(/[^\w .:-]/g, '')
+    .slice(0, 80);
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message);
+  }
+  return String(error);
+}

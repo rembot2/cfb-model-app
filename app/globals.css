@@ -141,6 +141,28 @@ h2 {
   font-weight: 700;
 }
 
+input,
+select,
+button {
+  font: inherit;
+}
+
+button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--blue);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 8px 13px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .grid {
   display: grid;
   gap: 12px;
@@ -203,6 +225,72 @@ h2 {
 .panel h3 {
   margin: 0;
   font-size: 16px;
+}
+
+.formula-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.formula-panel {
+  align-self: start;
+}
+
+.formula-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.formula-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.formula-grid input,
+.formula-grid select {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 7px 10px;
+  text-transform: none;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.status-line {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.formula-code {
+  display: grid;
+  gap: 10px;
+  color: #2a3442;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.formula-code p {
+  margin: 0;
+}
+
+.formula-tables {
+  gap: 18px;
 }
 
 .muted {
@@ -307,7 +395,9 @@ tbody tr:nth-child(even) {
   }
 
   .kpi-grid,
-  .dashboard-grid {
+  .dashboard-grid,
+  .formula-layout,
+  .formula-grid {
     grid-template-columns: 1fr;
   }
 }

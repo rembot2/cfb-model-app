@@ -28,6 +28,10 @@ export default async function OptimizerPage() {
           { label: 'HFA', className: 'num', render: row => fmt(row.home_field) },
           { label: 'Shrink', className: 'num', render: row => fmt(row.margin_shrink) },
           { label: 'Max', className: 'num', render: row => fmt(row.max_margin) },
+          { label: 'Coach O', className: 'num', render: row => fmt(row.coach_offense_boost) },
+          { label: 'Coach D', className: 'num', render: row => fmt(row.coach_defense_boost) },
+          { label: 'Dev', className: 'num', render: row => fmt(row.coach_development_boost) },
+          { label: 'Ramp Wks', className: 'num', render: row => fmt(row.rating_talent_ramp_weeks) },
           { label: 'Final Score', className: 'num', render: row => fmt(row.final_score) }
         ]}
       />

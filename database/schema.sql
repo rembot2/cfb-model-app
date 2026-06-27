@@ -120,6 +120,7 @@ create table if not exists public.model_configs (
   rating_talent_weight numeric not null default 0.4,
   rating_historical_position_weight numeric not null default 0.3,
   rating_preseason_position_weight numeric not null default 0.7,
+  rating_talent_ramp_weeks numeric not null default 8,
   is_active boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -142,6 +143,7 @@ insert into public.model_configs (
   rating_talent_weight,
   rating_historical_position_weight,
   rating_preseason_position_weight,
+  rating_talent_ramp_weeks,
   is_active
 ) values (
   'default',
@@ -160,6 +162,7 @@ insert into public.model_configs (
   0.4,
   0.3,
   0.7,
+  8,
   true
 ) on conflict (name) do nothing;
 
@@ -272,6 +275,10 @@ create table if not exists public.weight_optimizer (
   home_field numeric,
   margin_shrink numeric,
   max_margin numeric,
+  coach_offense_boost numeric,
+  coach_defense_boost numeric,
+  coach_development_boost numeric,
+  rating_talent_ramp_weeks numeric,
   train_score numeric,
   holdout_score numeric,
   all_score numeric,

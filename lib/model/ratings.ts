@@ -84,6 +84,8 @@ export type RatingOptions = {
   rosterPlayers?: RawRosterPlayer[];
   historicalPositionTalentWeight?: number;
   preseasonPositionTalentWeight?: number;
+  talentRampWeeks?: number;
+  ratingEvaluationWeek?: number;
   performanceTrust?: number;
   coaches?: RawCoachConfig[];
   coachInfluence?: CoachInfluence;
@@ -166,13 +168,23 @@ export function calculateTeamRatings(
     const positions = positionModel?.ratings[team];
     const coach = coachMap[team] || defaultCoachConfig();
     const coachYears = coach.hireYear > 0 ? season - coach.hireYear : 99;
-    const positionTalentSplit = season >= 2026
+    const targetTalentSplit = season >= 2026
+      ? clamp(options.historicalPositionTalentWeight ?? 0.30, 0, 1)
+      : clamp(options.historicalPositionTalentWeight ?? 0.30, 0, 0.60);
+    const earlyTalentSplit = season >= 2026
       ? coachYears <= 0
         ? 0.90
         : coachYears === 1
           ? 0.75
           : clamp(options.preseasonPositionTalentWeight ?? 0.70, 0, 1)
-      : clamp(options.historicalPositionTalentWeight ?? 0.30, 0, 0.60);
+      : clamp(options.preseasonPositionTalentWeight ?? 0.70, 0, 1);
+    const ratingWeek = options.ratingEvaluationWeek ?? maxWeekBySeason[season] ?? 0;
+    const positionTalentSplit = calculateTalentSplitForWeek(
+      ratingWeek,
+      earlyTalentSplit,
+      targetTalentSplit,
+      options.talentRampWeeks ?? 8
+    );
     const performanceSplit = 1 - positionTalentSplit;
     const rushOffTalent = positions ? positions.RB * 0.45 + positions.OL * 0.55 : 10;
     const passOffTalent = positions
@@ -235,9 +247,10 @@ export function calculateTeamRatings(
 
   return displayRows
     .map((row) => {
-      const offenseCoachBoost = coachScaleBoost(row.coach.offenseRating, coachInfluence.offenseBoost);
-      const defenseCoachBoost = coachScaleBoost(row.coach.defenseRating, coachInfluence.defenseBoost);
-      const developmentBoost = DEVELOPMENT_SCORE[row.coach.developmentRating] * coachInfluence.developmentBoost;
+      const coachActive = isCoachActiveForSeason(row.coach, season);
+      const offenseCoachBoost = coachActive ? coachScaleBoost(row.coach.offenseRating, coachInfluence.offenseBoost) : 0;
+      const defenseCoachBoost = coachActive ? coachScaleBoost(row.coach.defenseRating, coachInfluence.defenseBoost) : 0;
+      const developmentBoost = coachActive ? DEVELOPMENT_SCORE[row.coach.developmentRating] * coachInfluence.developmentBoost : 0;
       const rushOff = clampRating(scaleRating(row.rushOffDisplay, maxCompositeRaw) + offenseCoachBoost);
       const passOff = clampRating(scaleRating(row.passOffDisplay, maxCompositeRaw) + offenseCoachBoost);
       const rushDef = clampRating(scaleRating(row.rushDefDisplay, maxCompositeRaw) + defenseCoachBoost);
@@ -324,6 +337,19 @@ function buildPositionGroupRatings(teams: string[], players: RawRosterPlayer[]) 
   }
 
   return { ratings, topQb };
+}
+
+function calculateTalentSplitForWeek(week: number, earlyTalentSplit: number, targetTalentSplit: number, rampWeeks: number) {
+  const safeRampWeeks = Math.max(1, Math.round(rampWeeks || 1));
+  const safeWeek = Math.max(0, Number.isFinite(week) ? week : 0);
+  if (safeWeek <= 1) return clamp(earlyTalentSplit, 0, 1);
+  if (safeWeek >= safeRampWeeks) return clamp(targetTalentSplit, 0, 1);
+  const progress = (safeWeek - 1) / (safeRampWeeks - 1);
+  return clamp(earlyTalentSplit + (targetTalentSplit - earlyTalentSplit) * progress, 0, 1);
+}
+
+function isCoachActiveForSeason(coach: CoachRatingConfig, season: number) {
+  return !coach.hireYear || coach.hireYear <= season;
 }
 
 function normalizePositionGroup(position: unknown): PositionGroup | null {

@@ -19,6 +19,7 @@ type FormulaConfig = {
   rating_talent_weight?: number | string | null;
   rating_historical_position_weight?: number | string | null;
   rating_preseason_position_weight?: number | string | null;
+  rating_talent_ramp_weeks?: number | string | null;
 };
 
 const weightOptions = range(0, 1, 0.05);
@@ -29,6 +30,7 @@ const maxMarginOptions = range(14.5, 45.5, 1);
 const coachBoostOptions = range(0, 3, 0.25);
 const recencyOptions = range(1, 5, 0.25);
 const splitOptions = range(0, 1, 0.05);
+const rampWeekOptions = range(1, 12, 1);
 const seasonOptions = [2026, 2025, 2024, 2023, 2022];
 
 export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig | null }) {
@@ -49,6 +51,7 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
   const [ratingTalentWeight, setRatingTalentWeight] = useState(value(activeConfig?.rating_talent_weight, 0.4));
   const [ratingHistoricalPositionWeight, setRatingHistoricalPositionWeight] = useState(value(activeConfig?.rating_historical_position_weight, 0.3));
   const [ratingPreseasonPositionWeight, setRatingPreseasonPositionWeight] = useState(value(activeConfig?.rating_preseason_position_weight, 0.7));
+  const [ratingTalentRampWeeks, setRatingTalentRampWeeks] = useState(value(activeConfig?.rating_talent_ramp_weeks, 8));
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -88,7 +91,8 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           ratingRecencyWeight,
           ratingTalentWeight,
           ratingHistoricalPositionWeight,
-          ratingPreseasonPositionWeight
+          ratingPreseasonPositionWeight,
+          ratingTalentRampWeeks
         })
       });
       const json = await response.json();
@@ -137,22 +141,23 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
             Formula Name
             <input value={name} onChange={event => setName(event.target.value)} />
           </label>
-          <Select label="Action Season" value={runSeason} options={seasonOptions} onChange={setRunSeason} />
-          <Select label="Pass Advantage Weight" value={passWeight} options={weightOptions} onChange={setPassWeight} />
-          <Select label="Rush Advantage Weight" value={rushWeight} options={weightOptions} onChange={setRushWeight} />
-          <Select label="Overall Advantage Weight" value={overallWeight} options={weightOptions} onChange={setOverallWeight} />
-          <Select label="Composite Advantage Weight" value={compositeWeight} options={weightOptions} onChange={setCompositeWeight} />
-          <Select label="Points Per Rating" value={pointsPerRating} options={pointsOptions} onChange={setPointsPerRating} />
-          <Select label="Home Field" value={homeField} options={homeFieldOptions} onChange={setHomeField} />
-          <Select label="Margin Shrink" value={marginShrink} options={shrinkOptions} onChange={setMarginShrink} />
-          <Select label="Max Margin" value={maxMargin} options={maxMarginOptions} onChange={setMaxMargin} />
-          <Select label="Coach Offense Boost" value={coachOffenseBoost} options={coachBoostOptions} onChange={setCoachOffenseBoost} />
-          <Select label="Coach Defense Boost" value={coachDefenseBoost} options={coachBoostOptions} onChange={setCoachDefenseBoost} />
-          <Select label="Coach Development Boost" value={coachDevelopmentBoost} options={coachBoostOptions} onChange={setCoachDevelopmentBoost} />
-          <Select label="Stats Recency Weight" value={ratingRecencyWeight} options={recencyOptions} onChange={setRatingRecencyWeight} />
-          <Select label="Overall Talent Weight" value={ratingTalentWeight} options={splitOptions} onChange={setRatingTalentWeight} />
-          <Select label="2022-25 Position Weight" value={ratingHistoricalPositionWeight} options={splitOptions} onChange={setRatingHistoricalPositionWeight} />
-          <Select label="2026 Position Weight" value={ratingPreseasonPositionWeight} options={splitOptions} onChange={setRatingPreseasonPositionWeight} />
+          <Select label="Run Buttons Season" value={runSeason} options={seasonOptions} onChange={setRunSeason} help="Only controls which season the Recalc Ratings, Backtest, and Optimizer buttons run." />
+          <Select label="Pass Advantage Weight" value={passWeight} options={weightOptions} onChange={setPassWeight} help="How much the game spread rewards passing offense versus the opponent passing defense." />
+          <Select label="Rush Advantage Weight" value={rushWeight} options={weightOptions} onChange={setRushWeight} help="How much the game spread rewards rushing offense versus the opponent rushing defense." />
+          <Select label="Overall Advantage Weight" value={overallWeight} options={weightOptions} onChange={setOverallWeight} help="How much the spread uses total offense versus total defense matchup edges." />
+          <Select label="Composite Advantage Weight" value={compositeWeight} options={weightOptions} onChange={setCompositeWeight} help="How much the spread uses the simple team composite gap." />
+          <Select label="Points Per Rating" value={pointsPerRating} options={pointsOptions} onChange={setPointsPerRating} help="Turns a rating-point edge into projected scoreboard points." />
+          <Select label="Home Field" value={homeField} options={homeFieldOptions} onChange={setHomeField} help="Points added to the home team's predicted margin." />
+          <Select label="Margin Shrink" value={marginShrink} options={shrinkOptions} onChange={setMarginShrink} help="Pulls extreme predicted margins back toward zero." />
+          <Select label="Max Margin" value={maxMargin} options={maxMarginOptions} onChange={setMaxMargin} help="Hard cap so one team cannot be projected above this margin." />
+          <Select label="Coach Offense Boost" value={coachOffenseBoost} options={coachBoostOptions} onChange={setCoachOffenseBoost} help="Multiplier for each coach's 1-10 offensive rating." />
+          <Select label="Coach Defense Boost" value={coachDefenseBoost} options={coachBoostOptions} onChange={setCoachDefenseBoost} help="Multiplier for each coach's 1-10 defensive rating." />
+          <Select label="Coach Development Boost" value={coachDevelopmentBoost} options={coachBoostOptions} onChange={setCoachDevelopmentBoost} help="Multiplier for Elite/Good/Average/Poor/Terrible development tiers." />
+          <Select label="Stats Recency Weight" value={ratingRecencyWeight} options={recencyOptions} onChange={setRatingRecencyWeight} help="Higher means older seasons fade faster in the ratings calculation." />
+          <Select label="Overall Talent Weight" value={ratingTalentWeight} options={splitOptions} onChange={setRatingTalentWeight} help="How much total composite rating uses roster talent instead of performance stats." />
+          <Select label="Late Season Talent Weight" value={ratingHistoricalPositionWeight} options={splitOptions} onChange={setRatingHistoricalPositionWeight} help="Talent share after enough games have been played. 0.30 means 30% talent and 70% stats." />
+          <Select label="Early Season Talent Weight" value={ratingPreseasonPositionWeight} options={splitOptions} onChange={setRatingPreseasonPositionWeight} help="Talent share at the start of a season before stats are trustworthy." />
+          <Select label="Talent Ramp Weeks" value={ratingTalentRampWeeks} options={rampWeekOptions} onChange={setRatingTalentRampWeeks} help="How many weeks it takes to move from early talent weight to late-season talent weight." />
         </div>
 
         <div className="button-row">
@@ -206,9 +211,9 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           <p><strong>Coach offense boost</strong> = (coach offense rating - 5.5) * {coachOffenseBoost.toFixed(2)} and is added to pass/rush offense.</p>
           <p><strong>Coach defense boost</strong> = (coach defense rating - 5.5) * {coachDefenseBoost.toFixed(2)} and is added to pass/rush defense.</p>
           <p><strong>Development boost</strong> = development tier score * {coachDevelopmentBoost.toFixed(2)} and is added to composite only.</p>
-          <p><strong>2022-25 rating formula</strong> uses weighted seasons where seasonWeight = (1 / {ratingRecencyWeight.toFixed(2)}) ^ (targetSeason - statSeason). Performance is PPA, success rate, and points per drive. Composite raw = performanceScore * {(1 - ratingTalentWeight).toFixed(2)} + talentZ * 10 * {ratingTalentWeight.toFixed(2)}.</p>
-          <p><strong>Position split</strong> for 2022-25 uses {percent(ratingHistoricalPositionWeight)} position talent and {percent(1 - ratingHistoricalPositionWeight)} on-field performance in pass/rush offense and defense.</p>
-          <p><strong>2026 preseason split</strong> uses {percent(ratingPreseasonPositionWeight)} position talent and {percent(1 - ratingPreseasonPositionWeight)} performance, with new coach hire years allowed to increase position reliance.</p>
+          <p><strong>Rating formula</strong> uses weighted seasons where seasonWeight = (1 / {ratingRecencyWeight.toFixed(2)}) ^ (targetSeason - statSeason). Performance is PPA, success rate, and points per drive. Composite raw = performanceScore * {(1 - ratingTalentWeight).toFixed(2)} + talentZ * 10 * {ratingTalentWeight.toFixed(2)}.</p>
+          <p><strong>Talent/stat ramp</strong> starts at {percent(ratingPreseasonPositionWeight)} talent and {percent(1 - ratingPreseasonPositionWeight)} stats, then moves toward {percent(ratingHistoricalPositionWeight)} talent and {percent(1 - ratingHistoricalPositionWeight)} stats by week {ratingTalentRampWeeks.toFixed(0)}.</p>
+          <p><strong>Coach timing</strong> only applies a coach's boosts in seasons where that coach has already been hired. For example, a 2025 hire does not change 2022, 2023, or 2024 ratings.</p>
         </div>
       </section>
     </div>
@@ -219,21 +224,24 @@ function Select({
   label,
   value,
   options,
-  onChange
+  onChange,
+  help
 }: {
   label: string;
   value: number;
   options: number[];
   onChange: (value: number) => void;
+  help?: string;
 }) {
   return (
     <label>
       {label}
       <select value={value} onChange={event => onChange(Number(event.target.value))}>
         {options.map(option => (
-          <option key={option} value={option}>{option.toFixed(option % 1 ? 2 : 0).replace(/0$/, '')}</option>
+          <option key={option} value={option}>{formatOption(option)}</option>
         ))}
       </select>
+      {help ? <span className="field-help">{help}</span> : null}
     </label>
   );
 }
@@ -253,4 +261,8 @@ function value(input: unknown, fallback: number) {
 
 function percent(input: number) {
   return `${Math.round(input * 100)}%`;
+}
+
+function formatOption(option: number) {
+  return Number.isInteger(option) ? String(option) : option.toFixed(2).replace(/0$/, '');
 }

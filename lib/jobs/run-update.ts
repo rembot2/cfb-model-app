@@ -317,6 +317,7 @@ async function calculateRatings(season: number) {
       rosterPlayers: rosterRows,
       historicalPositionTalentWeight: activeConfig.ratingFormula.historicalPositionTalentWeight,
       preseasonPositionTalentWeight: activeConfig.ratingFormula.preseasonPositionTalentWeight,
+      talentRampWeeks: activeConfig.ratingFormula.talentRampWeeks,
       coachInfluence: activeConfig.coachInfluence,
       coaches: coachRows || []
     }
@@ -586,15 +587,57 @@ function mapRawStatRow(row: Record<string, any>): RawTeamGameStat {
   };
 }
 
+function buildCoachInfluenceCandidates(current: CoachInfluence) {
+  const candidates: CoachInfluence[] = [
+    current,
+    { offenseBoost: 0.25, defenseBoost: 0.25, developmentBoost: 0.5 },
+    { offenseBoost: 0.6, defenseBoost: 0.6, developmentBoost: 1.0 },
+    { offenseBoost: 1.0, defenseBoost: 1.0, developmentBoost: 1.5 }
+  ];
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = `${candidate.offenseBoost}:${candidate.defenseBoost}:${candidate.developmentBoost}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function runOptimizerThroughSeason(season: number) {
   const supabase = getServiceSupabase();
-  const ratedGames: RatedGame[] = [];
-  for (const s of [...new Set([2022, 2023, 2024, 2025, season])]) {
-    if (s > season) continue;
-    ratedGames.push(...await buildRatedGamesForSeason(s));
+  const currentConfig = await loadActiveModelConfig();
+  const rampOptions = [6, 8, 10, 12];
+  const coachOptions = buildCoachInfluenceCandidates(currentConfig.coachInfluence);
+  let selectedResults: ReturnType<typeof optimizeWeights> = [];
+  let selectedRampWeeks = currentConfig.ratingFormula.talentRampWeeks;
+  let selectedCoachInfluence = currentConfig.coachInfluence;
+
+  for (const rampWeeks of rampOptions) {
+    for (const coachInfluence of coachOptions) {
+      const ratedGames: RatedGame[] = [];
+      for (const s of [...new Set([2022, 2023, 2024, 2025, season])]) {
+        if (s > season) continue;
+        ratedGames.push(...await buildRatedGamesForSeason(s, {
+          dynamicRatings: true,
+          ratingFormula: {
+            ...currentConfig.ratingFormula,
+            talentRampWeeks: rampWeeks
+          },
+          coachInfluence
+        }));
+      }
+
+      const candidateResults = optimizeWeights(ratedGames);
+      if (!candidateResults.length) continue;
+      if (!selectedResults.length || candidateResults[0].finalScore < selectedResults[0].finalScore) {
+        selectedResults = candidateResults;
+        selectedRampWeeks = rampWeeks;
+        selectedCoachInfluence = coachInfluence;
+      }
+    }
   }
 
-  const results = optimizeWeights(ratedGames).slice(0, 250);
+  const results = selectedResults.slice(0, 250);
   if (!results.length) return { status: 'skipped' as const, count: 0, best: null };
 
   const rows = results.map((row) => ({
@@ -608,6 +651,10 @@ async function runOptimizerThroughSeason(season: number) {
     home_field: row.calibration.homeField,
     margin_shrink: row.calibration.marginShrink,
     max_margin: row.calibration.maxMargin,
+    coach_offense_boost: selectedCoachInfluence.offenseBoost,
+    coach_defense_boost: selectedCoachInfluence.defenseBoost,
+    coach_development_boost: selectedCoachInfluence.developmentBoost,
+    rating_talent_ramp_weeks: selectedRampWeeks,
     train_score: round2(row.trainScore),
     holdout_score: round2(row.holdoutScore),
     all_score: round2(row.allScore),
@@ -618,14 +665,19 @@ async function runOptimizerThroughSeason(season: number) {
 
   await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
   const best = results[0];
-  const currentConfig = await loadActiveModelConfig();
-  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, currentConfig.coachInfluence, currentConfig.ratingFormula);
+  const optimizedRatingFormula = {
+    ...currentConfig.ratingFormula,
+    talentRampWeeks: selectedRampWeeks
+  };
+  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, selectedCoachInfluence, optimizedRatingFormula);
   return {
     status: 'success' as const,
     count: rows.length,
     best: {
       weights: best.weights,
       calibration: best.calibration,
+      coachInfluence: selectedCoachInfluence,
+      ratingFormula: optimizedRatingFormula,
       finalScore: round2(best.finalScore)
     }
   };
@@ -678,15 +730,23 @@ async function activateOptimizedConfig(
       rating_talent_weight: ratingFormula.talentWeight,
       rating_historical_position_weight: ratingFormula.historicalPositionTalentWeight,
       rating_preseason_position_weight: ratingFormula.preseasonPositionTalentWeight,
+      rating_talent_ramp_weeks: ratingFormula.talentRampWeeks,
       is_active: true,
       updated_at: new Date().toISOString()
     }, { onConflict: 'name' });
   if (activateError) throw activateError;
 }
 
-async function buildRatedGamesForSeason(season: number): Promise<RatedGame[]> {
+type RatedGameBuildOptions = {
+  dynamicRatings?: boolean;
+  ratingFormula?: RatingFormula;
+  coachInfluence?: CoachInfluence;
+};
+
+async function buildRatedGamesForSeason(season: number, options: RatedGameBuildOptions = {}): Promise<RatedGame[]> {
   const supabase = getServiceSupabase();
-  const ratings = await loadRatings(season);
+  const storedRatings = options.dynamicRatings ? null : await loadRatings(season);
+  const activeConfig = options.dynamicRatings ? await loadActiveModelConfig() : null;
   const cfbd = new CfbdClient();
   const lineMap = await buildVegasLineMap(cfbd, season);
   const { data: games, error } = await supabase
@@ -698,8 +758,18 @@ async function buildRatedGamesForSeason(season: number): Promise<RatedGame[]> {
 
   if (error) throw error;
 
+  const weeklyRatings = options.dynamicRatings && activeConfig
+    ? await buildWeeklyRatingMaps(
+      season,
+      options.ratingFormula || activeConfig.ratingFormula,
+      options.coachInfluence || activeConfig.coachInfluence
+    )
+    : null;
+
   return (games || [])
     .map((game): RatedGame | null => {
+      const ratings = weeklyRatings?.get(Number(game.week)) || storedRatings;
+      if (!ratings) return null;
       const home = ratings.get(String(game.home_team));
       const away = ratings.get(String(game.away_team));
       if (!home || !away) return null;
@@ -716,6 +786,83 @@ async function buildRatedGamesForSeason(season: number): Promise<RatedGame[]> {
       };
     })
     .filter((game): game is RatedGame => game !== null);
+}
+
+async function buildWeeklyRatingMaps(
+  season: number,
+  ratingFormula: RatingFormula,
+  coachInfluence: CoachInfluence
+) {
+  const supabase = getServiceSupabase();
+  const statRows: any[] = [];
+  const rosterRows: any[] = [];
+  const pageSize = 1000;
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('team_game_stats')
+      .select('*')
+      .lte('season', season)
+      .order('season', { ascending: true })
+      .order('team', { ascending: true })
+      .order('week', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    statRows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('roster_players')
+      .select('season,team,player_name,position,rating,source')
+      .eq('season', season)
+      .order('team', { ascending: true })
+      .order('player_name', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    rosterRows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+
+  const { data: coachRows, error: coachError } = await supabase
+    .from('coach_configs')
+    .select('team,coach_name,hire_year,offense_rating,defense_rating,development_rating');
+  if (coachError) throw coachError;
+
+  const rawStats = statRows.map(mapRawStatRow);
+  const talentScores = buildTalentScores(rosterRows, season);
+  const weeks = [...new Set(rawStats.filter((row) => row.season === season).map((row) => row.week))]
+    .filter((week) => Number.isFinite(week))
+    .sort((a, b) => a - b);
+  const ratingMaps = new Map<number, Map<string, Rating>>();
+
+  for (const week of weeks) {
+    const availableStats = rawStats.filter((row) =>
+      row.season < season || (row.season === season && row.week < week)
+    );
+    const ratings = calculateTeamRatings(availableStats, talentScores, {
+      season,
+      recencyWeight: ratingFormula.recencyWeight,
+      iterations: 20,
+      talentWeight: ratingFormula.talentWeight,
+      requireTalent: season >= 2026,
+      rosterPlayers: rosterRows,
+      historicalPositionTalentWeight: ratingFormula.historicalPositionTalentWeight,
+      preseasonPositionTalentWeight: ratingFormula.preseasonPositionTalentWeight,
+      talentRampWeeks: ratingFormula.talentRampWeeks,
+      ratingEvaluationWeek: week,
+      coachInfluence,
+      coaches: coachRows || []
+    });
+    if (ratings.length) {
+      ratingMaps.set(week, new Map(ratings.map((rating) => [rating.team, rating])));
+    }
+  }
+
+  return ratingMaps;
 }
 
 async function loadRatings(season: number) {
@@ -779,7 +926,8 @@ async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibra
       recencyWeight: 2.5,
       talentWeight: 0.4,
       historicalPositionTalentWeight: 0.3,
-      preseasonPositionTalentWeight: 0.7
+      preseasonPositionTalentWeight: 0.7,
+      talentRampWeeks: 8
     }
   };
 
@@ -805,7 +953,8 @@ async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibra
       recencyWeight: numberOrNull(data.rating_recency_weight) ?? 2.5,
       talentWeight: numberOrNull(data.rating_talent_weight) ?? 0.4,
       historicalPositionTalentWeight: numberOrNull(data.rating_historical_position_weight) ?? 0.3,
-      preseasonPositionTalentWeight: numberOrNull(data.rating_preseason_position_weight) ?? 0.7
+      preseasonPositionTalentWeight: numberOrNull(data.rating_preseason_position_weight) ?? 0.7,
+      talentRampWeeks: numberOrNull(data.rating_talent_ramp_weeks) ?? 8
     }
   };
 }

@@ -33,7 +33,7 @@ const positionRatings = [
 
 export default async function TeamRatingPage({ params, searchParams }: TeamRatingPageProps) {
   const requestedSeason = Number(searchParams?.season);
-  const { row, rank, seasons, season } = await fetchRatingTeam(
+  const { row, rank, seasons, season, roster } = await fetchRatingTeam(
     Number.isFinite(requestedSeason) ? requestedSeason : undefined,
     params.team
   );
@@ -91,13 +91,50 @@ export default async function TeamRatingPage({ params, searchParams }: TeamRatin
         <div className="panel-header">
           <h3>Position Ratings</h3>
         </div>
-        <div className="rating-card-grid positions">
+        <div className="position-roster-grid">
           {positionRatings.map(([label, key]) => (
-            <RatingCard key={key} label={label} value={row[key]} />
+            <PositionRosterCard
+              key={key}
+              label={label}
+              value={row[key]}
+              players={roster.filter(player => normalizePosition(player.position) === label)}
+            />
           ))}
         </div>
       </section>
     </>
+  );
+}
+
+function PositionRosterCard({
+  label,
+  value,
+  players
+}: {
+  label: string;
+  value: unknown;
+  players: Array<Record<string, unknown>>;
+}) {
+  return (
+    <div className="rating-detail-card position-roster-card">
+      <div>
+        <span>{label}</span>
+        <strong>{fmt(value)}</strong>
+      </div>
+      <div className="mini-meter">
+        <div style={{ width: `${Math.max(0, Math.min(100, numberValue(value)))}%` }} />
+      </div>
+      <div className="position-player-list">
+        {players.length ? players.map((player, index) => (
+          <div key={`${player.player_name}-${index}`} className="position-player-row">
+            <span>{String(player.player_name ?? '')}</span>
+            <strong>{fmt(player.rating)}</strong>
+          </div>
+        )) : (
+          <div className="position-player-empty">No roster players loaded</div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -138,4 +175,20 @@ function numberValue(value: unknown) {
 function fmt(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(2).replace(/\.00$/, '') : '';
+}
+
+function normalizePosition(value: unknown) {
+  const position = String(value || '').toUpperCase().trim();
+  if (position === 'QB') return 'QB';
+  if (['RB', 'HB', 'FB'].includes(position)) return 'RB';
+  if (position === 'WR') return 'WR';
+  if (position === 'TE') return 'TE';
+  if (['OL', 'OT', 'IOL', 'OG', 'C'].includes(position)) return 'OL';
+  if (['DL', 'EDGE', 'DE', 'DT', 'NT'].includes(position)) return 'DL';
+  if (['LB', 'ILB', 'OLB'].includes(position)) return 'LB';
+  if (position === 'CB') return 'CB';
+  if (['S', 'SAF'].includes(position)) return 'S';
+  if (['K', 'PK'].includes(position)) return 'K';
+  if (position === 'P') return 'P';
+  return position;
 }

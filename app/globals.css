@@ -440,6 +440,12 @@ button:disabled {
   grid-template-columns: repeat(6, minmax(120px, 1fr));
 }
 
+.position-roster-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  gap: 12px;
+}
+
 .rating-detail-card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -476,6 +482,43 @@ button:disabled {
   height: 100%;
   border-radius: inherit;
   background: var(--teal);
+}
+
+.position-roster-card {
+  align-content: start;
+}
+
+.position-player-list {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.position-player-row {
+  align-items: center;
+  border-top: 1px solid #edf1f5;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding-top: 6px;
+}
+
+.position-player-row span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.position-player-row strong {
+  font-size: 13px;
+  margin: 0;
+}
+
+.position-player-empty {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .bar-list {
@@ -581,7 +624,8 @@ tbody tr:nth-child(even) {
   .formula-grid,
   .rating-rings,
   .rating-card-grid,
-  .rating-card-grid.positions {
+  .rating-card-grid.positions,
+  .position-roster-grid {
     grid-template-columns: 1fr;
   }
 }

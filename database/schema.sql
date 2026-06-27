@@ -116,6 +116,10 @@ create table if not exists public.model_configs (
   coach_offense_boost numeric not null default 0.6,
   coach_defense_boost numeric not null default 0.6,
   coach_development_boost numeric not null default 1.0,
+  rating_recency_weight numeric not null default 2.5,
+  rating_talent_weight numeric not null default 0.4,
+  rating_historical_position_weight numeric not null default 0.3,
+  rating_preseason_position_weight numeric not null default 0.7,
   is_active boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -134,6 +138,10 @@ insert into public.model_configs (
   coach_offense_boost,
   coach_defense_boost,
   coach_development_boost,
+  rating_recency_weight,
+  rating_talent_weight,
+  rating_historical_position_weight,
+  rating_preseason_position_weight,
   is_active
 ) values (
   'default',
@@ -148,6 +156,10 @@ insert into public.model_configs (
   0.6,
   0.6,
   1.0,
+  2.5,
+  0.4,
+  0.3,
+  0.7,
   true
 ) on conflict (name) do nothing;
 

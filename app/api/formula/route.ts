@@ -7,11 +7,6 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
-  const secret = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || body.secret;
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
-
   const weights = normalizeWeights({
     pass: numberOrDefault(body.passWeight, DEFAULT_WEIGHTS.pass),
     rush: numberOrDefault(body.rushWeight, DEFAULT_WEIGHTS.rush),
@@ -27,6 +22,10 @@ export async function POST(request: NextRequest) {
   const coachOffenseBoost = numberOrDefault(body.coachOffenseBoost, 0.6);
   const coachDefenseBoost = numberOrDefault(body.coachDefenseBoost, 0.6);
   const coachDevelopmentBoost = numberOrDefault(body.coachDevelopmentBoost, 1.0);
+  const ratingRecencyWeight = numberOrDefault(body.ratingRecencyWeight, 2.5);
+  const ratingTalentWeight = numberOrDefault(body.ratingTalentWeight, 0.4);
+  const ratingHistoricalPositionWeight = numberOrDefault(body.ratingHistoricalPositionWeight, 0.3);
+  const ratingPreseasonPositionWeight = numberOrDefault(body.ratingPreseasonPositionWeight, 0.7);
   const name = cleanName(body.name) || `manual-${new Date().toISOString().slice(0, 19)}`;
 
   try {
@@ -53,6 +52,10 @@ export async function POST(request: NextRequest) {
         coach_offense_boost: coachOffenseBoost,
         coach_defense_boost: coachDefenseBoost,
         coach_development_boost: coachDevelopmentBoost,
+        rating_recency_weight: ratingRecencyWeight,
+        rating_talent_weight: ratingTalentWeight,
+        rating_historical_position_weight: ratingHistoricalPositionWeight,
+        rating_preseason_position_weight: ratingPreseasonPositionWeight,
         is_active: true,
         updated_at: now
       }, { onConflict: 'name' })

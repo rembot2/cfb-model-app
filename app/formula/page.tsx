@@ -39,7 +39,11 @@ export default async function FormulaPage() {
               { label: 'Max', className: 'num', render: row => fmt(row.max_margin) },
               { label: 'Coach O', className: 'num', render: row => fmt(row.coach_offense_boost) },
               { label: 'Coach D', className: 'num', render: row => fmt(row.coach_defense_boost) },
-              { label: 'Dev', className: 'num', render: row => fmt(row.coach_development_boost) }
+              { label: 'Dev', className: 'num', render: row => fmt(row.coach_development_boost) },
+              { label: 'Recency', className: 'num', render: row => fmt(row.rating_recency_weight) },
+              { label: 'Talent', className: 'num', render: row => fmt(row.rating_talent_weight) },
+              { label: 'Hist Pos', className: 'num', render: row => fmt(row.rating_historical_position_weight) },
+              { label: 'Pre Pos', className: 'num', render: row => fmt(row.rating_preseason_position_weight) }
             ]}
           />
         </section>

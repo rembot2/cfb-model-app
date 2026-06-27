@@ -297,6 +297,124 @@ button:disabled {
   color: var(--muted);
 }
 
+.team-link,
+.back-link {
+  color: #174ea6;
+  font-weight: 800;
+}
+
+.team-link:hover,
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.back-link {
+  display: inline-flex;
+  margin-bottom: 16px;
+}
+
+.rating-rings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.rating-ring-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 20px 14px;
+}
+
+.rating-ring {
+  --rating-pct: 0%;
+  width: 150px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    conic-gradient(var(--blue) var(--rating-pct), #dce4ee 0);
+  display: grid;
+  place-items: center;
+}
+
+.rating-ring-inner {
+  width: 112px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid #edf1f5;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  font-size: 28px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.rating-ring-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.detail-section {
+  margin-top: 18px;
+}
+
+.rating-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.rating-card-grid.positions {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+}
+
+.rating-detail-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.rating-detail-card span {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.rating-detail-card strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-meter {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dce4ee;
+}
+
+.mini-meter div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--teal);
+}
+
 .bar-list {
   display: grid;
   gap: 8px;
@@ -397,7 +515,10 @@ tbody tr:nth-child(even) {
   .kpi-grid,
   .dashboard-grid,
   .formula-layout,
-  .formula-grid {
+  .formula-grid,
+  .rating-rings,
+  .rating-card-grid,
+  .rating-card-grid.positions {
     grid-template-columns: 1fr;
   }
 }

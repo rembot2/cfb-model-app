@@ -68,3 +68,36 @@ export async function fetchRatingsSeason(requestedSeason?: number) {
   if (ratingsResult.error) throw new Error(ratingsResult.error.message);
   return { seasons, season, rows: ratingsResult.data ?? [] };
 }
+
+export async function fetchFormulaData() {
+  const supabase = getPublicSupabase();
+  const [activeConfig, recentConfigs, optimizer] = await Promise.all([
+    supabase
+      .from('model_configs')
+      .select('*')
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('model_configs')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(25),
+    supabase
+      .from('weight_optimizer')
+      .select('*')
+      .order('rank', { ascending: true })
+      .limit(5)
+  ]);
+
+  for (const result of [activeConfig, recentConfigs, optimizer]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
+  return {
+    activeConfig: activeConfig.data,
+    recentConfigs: recentConfigs.data ?? [],
+    optimizer: optimizer.data ?? []
+  };
+}

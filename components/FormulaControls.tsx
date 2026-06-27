@@ -12,6 +12,9 @@ type FormulaConfig = {
   home_field?: number | string | null;
   margin_shrink?: number | string | null;
   max_margin?: number | string | null;
+  coach_offense_boost?: number | string | null;
+  coach_defense_boost?: number | string | null;
+  coach_development_boost?: number | string | null;
 };
 
 const weightOptions = range(0, 1, 0.05);
@@ -19,6 +22,7 @@ const pointsOptions = range(0.5, 2.5, 0.1);
 const homeFieldOptions = range(0, 5, 0.5);
 const shrinkOptions = range(0.5, 1, 0.05);
 const maxMarginOptions = range(14.5, 45.5, 1);
+const coachBoostOptions = range(0, 3, 0.25);
 
 export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig | null }) {
   const [secret, setSecret] = useState('');
@@ -31,6 +35,9 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
   const [homeField, setHomeField] = useState(value(activeConfig?.home_field, 2.5));
   const [marginShrink, setMarginShrink] = useState(value(activeConfig?.margin_shrink, 0.75));
   const [maxMargin, setMaxMargin] = useState(value(activeConfig?.max_margin, 24.5));
+  const [coachOffenseBoost, setCoachOffenseBoost] = useState(value(activeConfig?.coach_offense_boost, 0.6));
+  const [coachDefenseBoost, setCoachDefenseBoost] = useState(value(activeConfig?.coach_defense_boost, 0.6));
+  const [coachDevelopmentBoost, setCoachDevelopmentBoost] = useState(value(activeConfig?.coach_development_boost, 1.0));
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -68,7 +75,10 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           pointsPerRating,
           homeField,
           marginShrink,
-          maxMargin
+          maxMargin,
+          coachOffenseBoost,
+          coachDefenseBoost,
+          coachDevelopmentBoost
         })
       });
       const json = await response.json();
@@ -139,6 +149,9 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           <Select label="Home Field" value={homeField} options={homeFieldOptions} onChange={setHomeField} />
           <Select label="Margin Shrink" value={marginShrink} options={shrinkOptions} onChange={setMarginShrink} />
           <Select label="Max Margin" value={maxMargin} options={maxMarginOptions} onChange={setMaxMargin} />
+          <Select label="Coach Offense Boost" value={coachOffenseBoost} options={coachBoostOptions} onChange={setCoachOffenseBoost} />
+          <Select label="Coach Defense Boost" value={coachDefenseBoost} options={coachBoostOptions} onChange={setCoachDefenseBoost} />
+          <Select label="Coach Development Boost" value={coachDevelopmentBoost} options={coachBoostOptions} onChange={setCoachDevelopmentBoost} />
         </div>
 
         <div className="button-row">
@@ -179,6 +192,9 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           </p>
           <p><strong>Raw home margin</strong> = weightedRatingGap * {pointsPerRating.toFixed(1)} + {homeField.toFixed(1)}.</p>
           <p><strong>Final margin</strong> = raw margin * {marginShrink.toFixed(2)}, capped at +/- {maxMargin.toFixed(1)}, rounded to the nearest 0.5.</p>
+          <p><strong>Coach offense boost</strong> = (coach offense rating - 5.5) * {coachOffenseBoost.toFixed(2)} and is added to pass/rush offense.</p>
+          <p><strong>Coach defense boost</strong> = (coach defense rating - 5.5) * {coachDefenseBoost.toFixed(2)} and is added to pass/rush defense.</p>
+          <p><strong>Development boost</strong> = development tier score * {coachDevelopmentBoost.toFixed(2)} and is added to composite only.</p>
         </div>
       </section>
     </div>

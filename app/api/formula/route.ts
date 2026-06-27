@@ -24,6 +24,9 @@ export async function POST(request: NextRequest) {
     marginShrink: numberOrDefault(body.marginShrink, DEFAULT_CALIBRATION.marginShrink),
     maxMargin: numberOrDefault(body.maxMargin, DEFAULT_CALIBRATION.maxMargin)
   };
+  const coachOffenseBoost = numberOrDefault(body.coachOffenseBoost, 0.6);
+  const coachDefenseBoost = numberOrDefault(body.coachDefenseBoost, 0.6);
+  const coachDevelopmentBoost = numberOrDefault(body.coachDevelopmentBoost, 1.0);
   const name = cleanName(body.name) || `manual-${new Date().toISOString().slice(0, 19)}`;
 
   try {
@@ -47,6 +50,9 @@ export async function POST(request: NextRequest) {
         home_field: calibration.homeField,
         margin_shrink: calibration.marginShrink,
         max_margin: calibration.maxMargin,
+        coach_offense_boost: coachOffenseBoost,
+        coach_defense_boost: coachDefenseBoost,
+        coach_development_boost: coachDevelopmentBoost,
         is_active: true,
         updated_at: now
       }, { onConflict: 'name' })

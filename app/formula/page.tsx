@@ -36,7 +36,10 @@ export default async function FormulaPage() {
               { label: 'P/R', className: 'num', render: row => fmt(row.points_per_rating) },
               { label: 'HFA', className: 'num', render: row => fmt(row.home_field) },
               { label: 'Shrink', className: 'num', render: row => fmt(row.margin_shrink) },
-              { label: 'Max', className: 'num', render: row => fmt(row.max_margin) }
+              { label: 'Max', className: 'num', render: row => fmt(row.max_margin) },
+              { label: 'Coach O', className: 'num', render: row => fmt(row.coach_offense_boost) },
+              { label: 'Coach D', className: 'num', render: row => fmt(row.coach_defense_boost) },
+              { label: 'Dev', className: 'num', render: row => fmt(row.coach_development_boost) }
             ]}
           />
         </section>

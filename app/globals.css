@@ -293,6 +293,53 @@ button:disabled {
   gap: 18px;
 }
 
+.coach-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.coach-toolbar {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.coach-toolbar label {
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 6px;
+  min-width: 260px;
+  text-transform: uppercase;
+}
+
+.coach-toolbar input,
+.coach-table-shell input,
+.coach-table-shell select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 6px 8px;
+}
+
+.coach-table-shell table {
+  min-width: 980px;
+}
+
+.coach-table-shell button {
+  min-height: 32px;
+  padding: 5px 10px;
+}
+
+.coach-year-input {
+  max-width: 86px;
+  text-align: right;
+}
+
 .muted {
   color: var(--muted);
 }

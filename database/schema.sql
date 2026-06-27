@@ -93,6 +93,9 @@ create table if not exists public.coach_configs (
   hire_year integer,
   off_tendency integer not null default 3 check (off_tendency between 1 and 5),
   def_tendency integer not null default 3 check (def_tendency between 1 and 5),
+  offense_rating integer not null default 5 check (offense_rating between 1 and 10),
+  defense_rating integer not null default 5 check (defense_rating between 1 and 10),
+  development_rating text not null default 'Average' check (development_rating in ('Elite', 'Good', 'Average', 'Poor', 'Terrible')),
   preseason_override numeric,
   notes text,
   source text not null default 'manual',
@@ -110,6 +113,9 @@ create table if not exists public.model_configs (
   home_field numeric not null default 2.5,
   margin_shrink numeric not null default 0.75,
   max_margin numeric not null default 24.5,
+  coach_offense_boost numeric not null default 0.6,
+  coach_defense_boost numeric not null default 0.6,
+  coach_development_boost numeric not null default 1.0,
   is_active boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -125,6 +131,9 @@ insert into public.model_configs (
   home_field,
   margin_shrink,
   max_margin,
+  coach_offense_boost,
+  coach_defense_boost,
+  coach_development_boost,
   is_active
 ) values (
   'default',
@@ -136,6 +145,9 @@ insert into public.model_configs (
   2.5,
   0.75,
   24.5,
+  0.6,
+  0.6,
+  1.0,
   true
 ) on conflict (name) do nothing;
 

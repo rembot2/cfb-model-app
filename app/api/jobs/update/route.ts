@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { runModelUpdate, type UpdateStep } from '@/lib/jobs/run-update';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,7 @@ export async function POST(request: NextRequest) {
       rosterOffset: numberOrNull(body.offset) ?? 0,
       optimizeBacktest: body.optimizeBacktest !== false
     });
+    revalidateUpdatedPaths(steps);
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     return NextResponse.json(formatError(error), { status: 500 });
@@ -48,6 +50,7 @@ export async function GET(request: NextRequest) {
       rosterOffset: numberOrNull(request.nextUrl.searchParams.get('offset')) ?? 0,
       optimizeBacktest: request.nextUrl.searchParams.get('optimizeBacktest') !== 'false'
     });
+    revalidateUpdatedPaths(steps);
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     return NextResponse.json(formatError(error), { status: 500 });
@@ -68,6 +71,26 @@ function parseSteps(value: unknown): UpdateStep[] | undefined {
 function numberOrNull(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function revalidateUpdatedPaths(steps: UpdateStep[] | undefined) {
+  const changed = new Set(steps ?? ['teams', 'games', 'stats', 'rosters', 'coaches', 'ratings', 'predictions']);
+  revalidatePath('/');
+  if (changed.has('ratings') || changed.has('coaches')) {
+    revalidatePath('/ratings');
+    revalidatePath('/ratings/[team]', 'page');
+    revalidatePath('/coaches');
+  }
+  if (changed.has('predictions') || changed.has('games')) {
+    revalidatePath('/games');
+  }
+  if (changed.has('backtest')) {
+    revalidatePath('/backtest');
+    revalidatePath('/optimizer');
+  }
+  if (changed.has('ratings') || changed.has('backtest')) {
+    revalidatePath('/formula');
+  }
 }
 
 function formatError(error: unknown) {

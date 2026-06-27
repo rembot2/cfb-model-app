@@ -100,7 +100,10 @@ export function CoachControls({
       if (!response.ok || !json.ok) throw new Error(json.error || 'Recalculation failed');
       const ratingsCount = json.result?.ratings?.count ?? 0;
       const predictionCount = json.result?.predictions?.count ?? 0;
-      setStatus(`Recalculation finished: ${ratingsCount} ratings and ${predictionCount} predictions updated. Refresh the Ratings page.`);
+      const diagnostics = json.result?.ratings?.coachDiagnostics;
+      const matched = diagnostics?.matchedToRatingTeams ?? '?';
+      const nonNeutral = diagnostics?.nonNeutralMatched ?? '?';
+      setStatus(`Recalculation finished: ${ratingsCount} ratings and ${predictionCount} predictions updated. Coach matches: ${matched}; changed coaches: ${nonNeutral}. Refresh the Ratings page.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {

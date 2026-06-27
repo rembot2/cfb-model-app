@@ -12,15 +12,30 @@ type CoachRow = {
   source?: string | null;
 };
 
+type FormulaConfig = {
+  coach_offense_boost?: number | string | null;
+  coach_defense_boost?: number | string | null;
+  coach_development_boost?: number | string | null;
+};
+
 const ratingOptions = Array.from({ length: 10 }, (_value, index) => index + 1);
 const developmentOptions = ['Elite', 'Good', 'Average', 'Poor', 'Terrible'];
 
-export function CoachControls({ initialRows }: { initialRows: CoachRow[] }) {
+export function CoachControls({
+  initialRows,
+  activeConfig
+}: {
+  initialRows: CoachRow[];
+  activeConfig: FormulaConfig | null;
+}) {
   const [secret, setSecret] = useState('');
   const [rows, setRows] = useState(() => initialRows.map(normalizeRow));
   const [status, setStatus] = useState('');
   const [savingTeam, setSavingTeam] = useState('');
   const [recalculating, setRecalculating] = useState(false);
+  const coachOffenseBoost = numberValue(activeConfig?.coach_offense_boost, 0.6);
+  const coachDefenseBoost = numberValue(activeConfig?.coach_defense_boost, 0.6);
+  const coachDevelopmentBoost = numberValue(activeConfig?.coach_development_boost, 1.0);
 
   function updateRow(team: string, patch: Partial<ReturnType<typeof normalizeRow>>) {
     setRows(current => current.map(row => row.team === team ? { ...row, ...patch } : row));
@@ -51,7 +66,8 @@ export function CoachControls({ initialRows }: { initialRows: CoachRow[] }) {
       });
       const json = await response.json();
       if (!response.ok || !json.ok) throw new Error(json.error || 'Save failed');
-      setStatus(`Saved ${row.team}. Recalculate ratings when you are done editing coaches.`);
+      setStatus(`Saved ${row.team}. Recalculating 2026 ratings now...`);
+      await recalculateRatings({ requireSecret: false });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -59,8 +75,8 @@ export function CoachControls({ initialRows }: { initialRows: CoachRow[] }) {
     }
   }
 
-  async function recalculateRatings() {
-    if (!secret.trim()) {
+  async function recalculateRatings(options: { requireSecret?: boolean } = {}) {
+    if (options.requireSecret !== false && !secret.trim()) {
       setStatus('Enter your CRON_SECRET first.');
       return;
     }
@@ -82,7 +98,9 @@ export function CoachControls({ initialRows }: { initialRows: CoachRow[] }) {
       });
       const json = await response.json();
       if (!response.ok || !json.ok) throw new Error(json.error || 'Recalculation failed');
-      setStatus('Recalculation finished. Refresh the Ratings page to see the updated numbers.');
+      const ratingsCount = json.result?.ratings?.count ?? 0;
+      const predictionCount = json.result?.predictions?.count ?? 0;
+      setStatus(`Recalculation finished: ${ratingsCount} ratings and ${predictionCount} predictions updated. Refresh the Ratings page.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -102,10 +120,15 @@ export function CoachControls({ initialRows }: { initialRows: CoachRow[] }) {
             placeholder="CRON_SECRET"
           />
         </label>
-        <button disabled={recalculating} onClick={recalculateRatings}>
+        <button disabled={recalculating} onClick={() => recalculateRatings()}>
           {recalculating ? 'Recalculating' : 'Recalculate Ratings'}
         </button>
-        <p className="page-subtitle">Save edited rows first, then recalculate ratings when you are done.</p>
+        <div className="coach-boost-summary">
+          <span>Coach O Boost: {fmt(coachOffenseBoost)}</span>
+          <span>Coach D Boost: {fmt(coachDefenseBoost)}</span>
+          <span>Dev Boost: {fmt(coachDevelopmentBoost)}</span>
+        </div>
+        <p className="page-subtitle">Each row save now recalculates 2026 ratings automatically.</p>
       </div>
 
       <div className="table-shell coach-table-shell">
@@ -152,7 +175,7 @@ export function CoachControls({ initialRows }: { initialRows: CoachRow[] }) {
                 <td>{row.source}</td>
                 <td>
                   <button disabled={savingTeam === row.team} onClick={() => saveRow(row)}>
-                    {savingTeam === row.team ? 'Saving' : 'Save'}
+                    {savingTeam === row.team ? 'Saving' : 'Save + Recalc'}
                   </button>
                 </td>
               </tr>
@@ -182,4 +205,13 @@ function normalizeRow(row: CoachRow) {
 function ratingValue(value: unknown) {
   const n = Math.trunc(Number(value));
   return Number.isFinite(n) ? Math.max(1, Math.min(10, n)) : 5;
+}
+
+function numberValue(value: unknown, fallback: number) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function fmt(value: number) {
+  return value.toFixed(2).replace(/\.00$/, '');
 }

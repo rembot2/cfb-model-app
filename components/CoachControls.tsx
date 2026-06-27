@@ -20,6 +20,7 @@ export function CoachControls({ initialRows }: { initialRows: CoachRow[] }) {
   const [rows, setRows] = useState(() => initialRows.map(normalizeRow));
   const [status, setStatus] = useState('');
   const [savingTeam, setSavingTeam] = useState('');
+  const [recalculating, setRecalculating] = useState(false);
 
   function updateRow(team: string, patch: Partial<ReturnType<typeof normalizeRow>>) {
     setRows(current => current.map(row => row.team === team ? { ...row, ...patch } : row));
@@ -58,6 +59,37 @@ export function CoachControls({ initialRows }: { initialRows: CoachRow[] }) {
     }
   }
 
+  async function recalculateRatings() {
+    if (!secret.trim()) {
+      setStatus('Enter your CRON_SECRET first.');
+      return;
+    }
+
+    setRecalculating(true);
+    setStatus('Recalculating 2026 ratings and predictions with the saved coach inputs...');
+    try {
+      const response = await fetch('/api/jobs/update', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${secret.trim()}`
+        },
+        body: JSON.stringify({
+          season: 2026,
+          steps: ['ratings', 'predictions'],
+          optimizeBacktest: false
+        })
+      });
+      const json = await response.json();
+      if (!response.ok || !json.ok) throw new Error(json.error || 'Recalculation failed');
+      setStatus('Recalculation finished. Refresh the Ratings page to see the updated numbers.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecalculating(false);
+    }
+  }
+
   return (
     <div className="coach-editor">
       <div className="panel coach-toolbar">
@@ -70,7 +102,10 @@ export function CoachControls({ initialRows }: { initialRows: CoachRow[] }) {
             placeholder="CRON_SECRET"
           />
         </label>
-        <p className="page-subtitle">Change coach ratings here, then save each row you edit.</p>
+        <button disabled={recalculating} onClick={recalculateRatings}>
+          {recalculating ? 'Recalculating' : 'Recalculate Ratings'}
+        </button>
+        <p className="page-subtitle">Save edited rows first, then recalculate ratings when you are done.</p>
       </div>
 
       <div className="table-shell coach-table-shell">

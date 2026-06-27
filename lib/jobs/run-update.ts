@@ -5,7 +5,7 @@ import { evaluateRatedGames, summarizeEvaluatedGames, type EvaluatedGame, type R
 import { optimizeWeights } from '../model/optimizer';
 import { DEFAULT_CALIBRATION, DEFAULT_WEIGHTS, formatSignedSpread, gradeModelVsVegas, predictGame } from '../model/predict';
 import { calculateTeamRatings, type RawTeamGameStat } from '../model/ratings';
-import type { ModelCalibration, ModelWeights, Rating } from '../model/types';
+import type { CoachInfluence, ModelCalibration, ModelWeights, Rating } from '../model/types';
 
 type UpdateOptions = {
   season: number;
@@ -160,6 +160,9 @@ async function fetchCoaches(season: number) {
       hire_year: lockIdentity ? prior.hire_year : fromCfbd?.hireYear ?? prior?.hire_year ?? null,
       off_tendency: prior?.off_tendency ?? 3,
       def_tendency: prior?.def_tendency ?? 3,
+      offense_rating: prior?.offense_rating ?? 5,
+      defense_rating: prior?.defense_rating ?? 5,
+      development_rating: prior?.development_rating ?? 'Average',
       preseason_override: prior?.preseason_override ?? null,
       notes: prior?.notes ?? null,
       source: lockIdentity ? 'manual' : fromCfbd ? 'cfbd' : prior?.source || 'manual',
@@ -294,8 +297,9 @@ async function calculateRatings(season: number) {
 
   const { data: coachRows, error: coachError } = await supabase
     .from('coach_configs')
-    .select('team,coach_name,tier,hire_year,off_tendency,def_tendency,preseason_override');
+    .select('team,coach_name,hire_year,offense_rating,defense_rating,development_rating');
   if (coachError) throw coachError;
+  const activeConfig = await loadActiveModelConfig();
 
   const talentScores = buildTalentScores(rosterRows, season);
   const ratings = calculateTeamRatings(
@@ -312,7 +316,7 @@ async function calculateRatings(season: number) {
       rosterPlayers: rosterRows,
       historicalPositionTalentWeight: 0.30,
       preseasonPositionTalentWeight: 0.70,
-      performanceTrust: 0.82,
+      coachInfluence: activeConfig.coachInfluence,
       coaches: coachRows || []
     }
   );
@@ -586,7 +590,8 @@ async function runOptimizerThroughSeason(season: number) {
 
   await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
   const best = results[0];
-  await activateOptimizedConfig(supabase, season, best.weights, best.calibration);
+  const currentConfig = await loadActiveModelConfig();
+  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, currentConfig.coachInfluence);
   return {
     status: 'success' as const,
     count: rows.length,
@@ -616,7 +621,8 @@ async function activateOptimizedConfig(
   supabase: ReturnType<typeof getServiceSupabase>,
   season: number,
   weights: ModelWeights,
-  calibration: ModelCalibration
+  calibration: ModelCalibration,
+  coachInfluence: CoachInfluence
 ) {
   const { error: deactivateError } = await supabase
     .from('model_configs')
@@ -636,6 +642,9 @@ async function activateOptimizedConfig(
       home_field: calibration.homeField,
       margin_shrink: calibration.marginShrink,
       max_margin: calibration.maxMargin,
+      coach_offense_boost: coachInfluence.offenseBoost,
+      coach_defense_boost: coachInfluence.defenseBoost,
+      coach_development_boost: coachInfluence.developmentBoost,
       is_active: true,
       updated_at: new Date().toISOString()
     }, { onConflict: 'name' });
@@ -715,7 +724,7 @@ async function loadRatings(season: number) {
   );
 }
 
-async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibration: ModelCalibration }> {
+async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibration: ModelCalibration; coachInfluence: CoachInfluence }> {
   const supabase = getServiceSupabase();
   const { data, error } = await supabase
     .from('model_configs')
@@ -725,7 +734,15 @@ async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibra
     .maybeSingle();
 
   if (error) throw error;
-  if (!data) return { weights: DEFAULT_WEIGHTS, calibration: DEFAULT_CALIBRATION };
+  if (!data) return {
+    weights: DEFAULT_WEIGHTS,
+    calibration: DEFAULT_CALIBRATION,
+    coachInfluence: {
+      offenseBoost: 0.6,
+      defenseBoost: 0.6,
+      developmentBoost: 1.0
+    }
+  };
 
   return {
     weights: {
@@ -739,6 +756,11 @@ async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibra
       homeField: numberOrNull(data.home_field) ?? DEFAULT_CALIBRATION.homeField,
       marginShrink: numberOrNull(data.margin_shrink) ?? DEFAULT_CALIBRATION.marginShrink,
       maxMargin: numberOrNull(data.max_margin) ?? DEFAULT_CALIBRATION.maxMargin
+    },
+    coachInfluence: {
+      offenseBoost: numberOrNull(data.coach_offense_boost) ?? 0.6,
+      defenseBoost: numberOrNull(data.coach_defense_boost) ?? 0.6,
+      developmentBoost: numberOrNull(data.coach_development_boost) ?? 1.0
     }
   };
 }

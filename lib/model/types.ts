@@ -36,6 +36,12 @@ export type ModelCalibration = {
   maxMargin: number;
 };
 
+export type CoachInfluence = {
+  offenseBoost: number;
+  defenseBoost: number;
+  developmentBoost: number;
+};
+
 export type MatchupAdvantages = {
   passAdv: number;
   rushAdv: number;

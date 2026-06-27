@@ -326,6 +326,22 @@ button:disabled {
   padding: 6px 8px;
 }
 
+.coach-boost-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coach-boost-summary span {
+  background: #e8f0fe;
+  border: 1px solid #cbdaf7;
+  border-radius: 999px;
+  color: #163b7a;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 6px 10px;
+}
+
 .coach-table-shell table {
   min-width: 980px;
 }

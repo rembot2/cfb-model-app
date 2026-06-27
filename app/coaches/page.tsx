@@ -1,10 +1,13 @@
 import { CoachControls } from '@/components/CoachControls';
-import { fetchTable } from '@/lib/db/queries';
+import { fetchFormulaData, fetchTable } from '@/lib/db/queries';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CoachesPage() {
-  const rows = await fetchTable('coach_configs', 250);
+  const [rows, formula] = await Promise.all([
+    fetchTable('coach_configs', 250),
+    fetchFormulaData()
+  ]);
   rows.sort((a, b) => String(a.team || '').localeCompare(String(b.team || '')));
 
   return (
@@ -16,7 +19,7 @@ export default async function CoachesPage() {
           <div className="page-subtitle">{rows.length} teams</div>
         </div>
       </header>
-      <CoachControls initialRows={rows} />
+      <CoachControls initialRows={rows} activeConfig={formula.activeConfig} />
     </>
   );
 }

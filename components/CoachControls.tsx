@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type CoachRow = {
   team?: string | null;
@@ -57,6 +57,9 @@ export function CoachControls({
       });
       const json = await response.json();
       if (!response.ok || !json.ok) throw new Error(json.error || 'Save/recalculation failed');
+      if (Array.isArray(json.coaches)) {
+        setRows(json.coaches.map(normalizeRow));
+      }
       setDirtyTeams(new Set());
       const ratingsCount = json.result?.ratings?.count ?? 0;
       const predictionCount = json.result?.predictions?.count ?? 0;
@@ -70,6 +73,17 @@ export function CoachControls({
       setSavingAll(false);
     }
   }
+
+  useEffect(() => {
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) {
+        window.location.reload();
+      }
+    }
+
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
 
   return (
     <div className="coach-editor">

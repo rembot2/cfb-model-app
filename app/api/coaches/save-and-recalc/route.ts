@@ -34,7 +34,13 @@ export async function POST(request: NextRequest) {
     revalidatePath('/ratings/[team]', 'page');
     revalidatePath('/games');
 
-    return NextResponse.json({ ok: true, saved: rows.length, result });
+    const { data: freshRows, error: freshError } = await supabase
+      .from('coach_configs')
+      .select('team,coach_name,hire_year,offense_rating,defense_rating,development_rating,source')
+      .order('team', { ascending: true });
+    if (freshError) throw freshError;
+
+    return NextResponse.json({ ok: true, saved: rows.length, result, coaches: freshRows ?? [] });
   } catch (error) {
     return NextResponse.json({ ok: false, error: errorMessage(error) }, { status: 500 });
   }

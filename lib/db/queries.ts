@@ -82,6 +82,19 @@ export async function fetchRatingsSeason(requestedSeason?: number) {
   return { seasons, season, rows: filteredRows };
 }
 
+export async function fetchRatingTeam(requestedSeason: number | undefined, teamName: string) {
+  const { seasons, season, rows } = await fetchRatingsSeason(requestedSeason);
+  const decodedTeam = decodeURIComponent(teamName);
+  const index = rows.findIndex(row => String(row.team) === decodedTeam);
+
+  return {
+    seasons,
+    season,
+    rank: index >= 0 ? index + 1 : null,
+    row: index >= 0 ? rows[index] : null
+  };
+}
+
 function shouldFilterToFbs(season: number) {
   return season >= 2022 && season <= 2025;
 }

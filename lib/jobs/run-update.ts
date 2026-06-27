@@ -5,7 +5,7 @@ import { evaluateRatedGames, summarizeEvaluatedGames, type EvaluatedGame, type R
 import { optimizeWeights } from '../model/optimizer';
 import { DEFAULT_CALIBRATION, DEFAULT_WEIGHTS, formatSignedSpread, gradeModelVsVegas, predictGame } from '../model/predict';
 import { calculateTeamRatings, type RawTeamGameStat } from '../model/ratings';
-import type { CoachInfluence, ModelCalibration, ModelWeights, Rating } from '../model/types';
+import type { CoachInfluence, ModelCalibration, ModelWeights, Rating, RatingFormula } from '../model/types';
 
 type UpdateOptions = {
   season: number;
@@ -308,15 +308,15 @@ async function calculateRatings(season: number) {
     talentScores,
     {
       season,
-      recencyWeight: 2.5,
+      recencyWeight: activeConfig.ratingFormula.recencyWeight,
       iterations: 20,
-      talentWeight: 0.4,
+      talentWeight: activeConfig.ratingFormula.talentWeight,
       // Historical ratings should retain every team with performance data.
       // The preseason 2026 model is intentionally limited to seeded rosters.
       requireTalent: season >= 2026,
       rosterPlayers: rosterRows,
-      historicalPositionTalentWeight: 0.30,
-      preseasonPositionTalentWeight: 0.70,
+      historicalPositionTalentWeight: activeConfig.ratingFormula.historicalPositionTalentWeight,
+      preseasonPositionTalentWeight: activeConfig.ratingFormula.preseasonPositionTalentWeight,
       coachInfluence: activeConfig.coachInfluence,
       coaches: coachRows || []
     }
@@ -619,7 +619,7 @@ async function runOptimizerThroughSeason(season: number) {
   await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
   const best = results[0];
   const currentConfig = await loadActiveModelConfig();
-  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, currentConfig.coachInfluence);
+  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, currentConfig.coachInfluence, currentConfig.ratingFormula);
   return {
     status: 'success' as const,
     count: rows.length,
@@ -650,7 +650,8 @@ async function activateOptimizedConfig(
   season: number,
   weights: ModelWeights,
   calibration: ModelCalibration,
-  coachInfluence: CoachInfluence
+  coachInfluence: CoachInfluence,
+  ratingFormula: RatingFormula
 ) {
   const { error: deactivateError } = await supabase
     .from('model_configs')
@@ -673,6 +674,10 @@ async function activateOptimizedConfig(
       coach_offense_boost: coachInfluence.offenseBoost,
       coach_defense_boost: coachInfluence.defenseBoost,
       coach_development_boost: coachInfluence.developmentBoost,
+      rating_recency_weight: ratingFormula.recencyWeight,
+      rating_talent_weight: ratingFormula.talentWeight,
+      rating_historical_position_weight: ratingFormula.historicalPositionTalentWeight,
+      rating_preseason_position_weight: ratingFormula.preseasonPositionTalentWeight,
       is_active: true,
       updated_at: new Date().toISOString()
     }, { onConflict: 'name' });
@@ -752,7 +757,7 @@ async function loadRatings(season: number) {
   );
 }
 
-async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibration: ModelCalibration; coachInfluence: CoachInfluence }> {
+async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibration: ModelCalibration; coachInfluence: CoachInfluence; ratingFormula: RatingFormula }> {
   const supabase = getServiceSupabase();
   const { data, error } = await supabase
     .from('model_configs')
@@ -769,6 +774,12 @@ async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibra
       offenseBoost: 0.6,
       defenseBoost: 0.6,
       developmentBoost: 1.0
+    },
+    ratingFormula: {
+      recencyWeight: 2.5,
+      talentWeight: 0.4,
+      historicalPositionTalentWeight: 0.3,
+      preseasonPositionTalentWeight: 0.7
     }
   };
 
@@ -789,6 +800,12 @@ async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibra
       offenseBoost: numberOrNull(data.coach_offense_boost) ?? 0.6,
       defenseBoost: numberOrNull(data.coach_defense_boost) ?? 0.6,
       developmentBoost: numberOrNull(data.coach_development_boost) ?? 1.0
+    },
+    ratingFormula: {
+      recencyWeight: numberOrNull(data.rating_recency_weight) ?? 2.5,
+      talentWeight: numberOrNull(data.rating_talent_weight) ?? 0.4,
+      historicalPositionTalentWeight: numberOrNull(data.rating_historical_position_weight) ?? 0.3,
+      preseasonPositionTalentWeight: numberOrNull(data.rating_preseason_position_weight) ?? 0.7
     }
   };
 }

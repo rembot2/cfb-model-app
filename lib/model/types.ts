@@ -42,6 +42,13 @@ export type CoachInfluence = {
   developmentBoost: number;
 };
 
+export type RatingFormula = {
+  recencyWeight: number;
+  talentWeight: number;
+  historicalPositionTalentWeight: number;
+  preseasonPositionTalentWeight: number;
+};
+
 export type MatchupAdvantages = {
   passAdv: number;
   rushAdv: number;

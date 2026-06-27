@@ -86,13 +86,31 @@ export async function fetchRatingTeam(requestedSeason: number | undefined, teamN
   const { seasons, season, rows } = await fetchRatingsSeason(requestedSeason);
   const decodedTeam = decodeURIComponent(teamName);
   const index = rows.findIndex(row => String(row.team) === decodedTeam);
+  const roster = season
+    ? await fetchRosterForTeam(season, decodedTeam)
+    : [];
 
   return {
     seasons,
     season,
     rank: index >= 0 ? index + 1 : null,
-    row: index >= 0 ? rows[index] : null
+    row: index >= 0 ? rows[index] : null,
+    roster
   };
+}
+
+export async function fetchRosterForTeam(season: number, team: string) {
+  const supabase = getPublicSupabase();
+  const { data, error } = await supabase
+    .from('roster_players')
+    .select('player_name,position,rating,class_year,source')
+    .eq('season', season)
+    .eq('team', team)
+    .order('rating', { ascending: false, nullsFirst: false })
+    .limit(300);
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
 }
 
 function shouldFilterToFbs(season: number) {

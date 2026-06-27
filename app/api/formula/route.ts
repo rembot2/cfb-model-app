@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
   const ratingTalentWeight = numberOrDefault(body.ratingTalentWeight, 0.4);
   const ratingHistoricalPositionWeight = numberOrDefault(body.ratingHistoricalPositionWeight, 0.3);
   const ratingPreseasonPositionWeight = numberOrDefault(body.ratingPreseasonPositionWeight, 0.7);
+  const ratingTalentRampWeeks = numberOrDefault(body.ratingTalentRampWeeks, 8);
   const name = cleanName(body.name) || `manual-${new Date().toISOString().slice(0, 19)}`;
 
   try {
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
         rating_talent_weight: ratingTalentWeight,
         rating_historical_position_weight: ratingHistoricalPositionWeight,
         rating_preseason_position_weight: ratingPreseasonPositionWeight,
+        rating_talent_ramp_weeks: ratingTalentRampWeeks,
         is_active: true,
         updated_at: now
       }, { onConflict: 'name' })

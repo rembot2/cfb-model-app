@@ -47,6 +47,7 @@ export type RatingFormula = {
   talentWeight: number;
   historicalPositionTalentWeight: number;
   preseasonPositionTalentWeight: number;
+  talentRampWeeks: number;
 };
 
 export type MatchupAdvantages = {

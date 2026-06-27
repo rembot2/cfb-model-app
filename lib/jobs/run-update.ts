@@ -18,6 +18,16 @@ type UpdateOptions = {
 
 export type UpdateStep = 'teams' | 'games' | 'stats' | 'rosters' | 'coaches' | 'ratings' | 'predictions' | 'backtest';
 
+type WeeklyRatingSource = {
+  rawStats: RawTeamGameStat[];
+  rosterRows: any[];
+  coachRows: any[];
+  talentScores: Record<string, number>;
+};
+
+const weeklyRatingSourceCache = new Map<number, Promise<WeeklyRatingSource>>();
+const vegasLineCache = new Map<number, Promise<Map<string, number>>>();
+
 export async function runModelUpdate(options: UpdateOptions) {
   const supabase = getServiceSupabase();
   const startedAt = new Date().toISOString();
@@ -590,7 +600,6 @@ function mapRawStatRow(row: Record<string, any>): RawTeamGameStat {
 function buildCoachInfluenceCandidates(current: CoachInfluence) {
   const candidates: CoachInfluence[] = [
     current,
-    { offenseBoost: 0.25, defenseBoost: 0.25, developmentBoost: 0.5 },
     { offenseBoost: 0.6, defenseBoost: 0.6, developmentBoost: 1.0 },
     { offenseBoost: 1.0, defenseBoost: 1.0, developmentBoost: 1.5 }
   ];
@@ -603,10 +612,14 @@ function buildCoachInfluenceCandidates(current: CoachInfluence) {
   });
 }
 
+function uniqueNumbers(values: number[]) {
+  return [...new Set(values.map((value) => Math.round(Number(value))).filter((value) => Number.isFinite(value) && value > 0))];
+}
+
 async function runOptimizerThroughSeason(season: number) {
   const supabase = getServiceSupabase();
   const currentConfig = await loadActiveModelConfig();
-  const rampOptions = [6, 8, 10, 12];
+  const rampOptions = uniqueNumbers([currentConfig.ratingFormula.talentRampWeeks, 6, 10]);
   const coachOptions = buildCoachInfluenceCandidates(currentConfig.coachInfluence);
   let selectedResults: ReturnType<typeof optimizeWeights> = [];
   let selectedRampWeeks = currentConfig.ratingFormula.talentRampWeeks;
@@ -748,7 +761,7 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
   const storedRatings = options.dynamicRatings ? null : await loadRatings(season);
   const activeConfig = options.dynamicRatings ? await loadActiveModelConfig() : null;
   const cfbd = new CfbdClient();
-  const lineMap = await buildVegasLineMap(cfbd, season);
+  const lineMap = await getCachedVegasLineMap(cfbd, season);
   const { data: games, error } = await supabase
     .from('games')
     .select('*')
@@ -793,6 +806,56 @@ async function buildWeeklyRatingMaps(
   ratingFormula: RatingFormula,
   coachInfluence: CoachInfluence
 ) {
+  const { rawStats, rosterRows, coachRows, talentScores } = await getWeeklyRatingSource(season);
+  const weeks = [...new Set(rawStats.filter((row) => row.season === season).map((row) => row.week))]
+    .filter((week) => Number.isFinite(week))
+    .sort((a, b) => a - b);
+  const ratingMaps = new Map<number, Map<string, Rating>>();
+
+  for (const week of weeks) {
+    const availableStats = rawStats.filter((row) =>
+      row.season < season || (row.season === season && row.week < week)
+    );
+    const ratings = calculateTeamRatings(availableStats, talentScores, {
+      season,
+      recencyWeight: ratingFormula.recencyWeight,
+      iterations: 20,
+      talentWeight: ratingFormula.talentWeight,
+      requireTalent: season >= 2026,
+      rosterPlayers: rosterRows,
+      historicalPositionTalentWeight: ratingFormula.historicalPositionTalentWeight,
+      preseasonPositionTalentWeight: ratingFormula.preseasonPositionTalentWeight,
+      talentRampWeeks: ratingFormula.talentRampWeeks,
+      ratingEvaluationWeek: week,
+      coachInfluence,
+      coaches: coachRows
+    });
+    if (ratings.length) {
+      ratingMaps.set(week, new Map(ratings.map((rating) => [rating.team, rating])));
+    }
+  }
+
+  return ratingMaps;
+}
+
+async function getCachedVegasLineMap(cfbd: CfbdClient, season: number) {
+  const existing = vegasLineCache.get(season);
+  if (existing) return existing;
+  const promise = buildVegasLineMap(cfbd, season);
+  vegasLineCache.set(season, promise);
+  return promise;
+}
+
+async function getWeeklyRatingSource(season: number) {
+  const existing = weeklyRatingSourceCache.get(season);
+  if (existing) return existing;
+
+  const promise = loadWeeklyRatingSource(season);
+  weeklyRatingSourceCache.set(season, promise);
+  return promise;
+}
+
+async function loadWeeklyRatingSource(season: number): Promise<WeeklyRatingSource> {
   const supabase = getServiceSupabase();
   const statRows: any[] = [];
   const rosterRows: any[] = [];
@@ -832,37 +895,12 @@ async function buildWeeklyRatingMaps(
     .select('team,coach_name,hire_year,offense_rating,defense_rating,development_rating');
   if (coachError) throw coachError;
 
-  const rawStats = statRows.map(mapRawStatRow);
-  const talentScores = buildTalentScores(rosterRows, season);
-  const weeks = [...new Set(rawStats.filter((row) => row.season === season).map((row) => row.week))]
-    .filter((week) => Number.isFinite(week))
-    .sort((a, b) => a - b);
-  const ratingMaps = new Map<number, Map<string, Rating>>();
-
-  for (const week of weeks) {
-    const availableStats = rawStats.filter((row) =>
-      row.season < season || (row.season === season && row.week < week)
-    );
-    const ratings = calculateTeamRatings(availableStats, talentScores, {
-      season,
-      recencyWeight: ratingFormula.recencyWeight,
-      iterations: 20,
-      talentWeight: ratingFormula.talentWeight,
-      requireTalent: season >= 2026,
-      rosterPlayers: rosterRows,
-      historicalPositionTalentWeight: ratingFormula.historicalPositionTalentWeight,
-      preseasonPositionTalentWeight: ratingFormula.preseasonPositionTalentWeight,
-      talentRampWeeks: ratingFormula.talentRampWeeks,
-      ratingEvaluationWeek: week,
-      coachInfluence,
-      coaches: coachRows || []
-    });
-    if (ratings.length) {
-      ratingMaps.set(week, new Map(ratings.map((rating) => [rating.team, rating])));
-    }
-  }
-
-  return ratingMaps;
+  return {
+    rawStats: statRows.map(mapRawStatRow),
+    rosterRows,
+    coachRows: coachRows || [],
+    talentScores: buildTalentScores(rosterRows, season)
+  };
 }
 
 async function loadRatings(season: number) {

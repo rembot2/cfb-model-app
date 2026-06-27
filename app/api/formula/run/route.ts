@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { runModelUpdate, type UpdateStep } from '@/lib/jobs/run-update';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));

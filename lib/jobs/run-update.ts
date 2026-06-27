@@ -302,6 +302,7 @@ async function calculateRatings(season: number) {
   const activeConfig = await loadActiveModelConfig();
 
   const talentScores = buildTalentScores(rosterRows, season);
+  const coachDiagnostics = buildCoachDiagnostics(coachRows || [], talentScores, activeConfig.coachInfluence);
   const ratings = calculateTeamRatings(
     statRows.map(mapRawStatRow),
     talentScores,
@@ -351,7 +352,34 @@ async function calculateRatings(season: number) {
     await upsertRows(supabase, 'ratings', rows, 'season,team');
   }
 
-  return { season, status: 'success', count: rows.length };
+  return { season, status: 'success', count: rows.length, coachDiagnostics };
+}
+
+function buildCoachDiagnostics(
+  coachRows: Array<Record<string, unknown>>,
+  talentScores: Record<string, number>,
+  coachInfluence: CoachInfluence
+) {
+  const ratingTeams = new Set(Object.keys(talentScores));
+  const matched = coachRows.filter((row) => ratingTeams.has(String(row.team)));
+  const nonNeutral = matched.filter((row) =>
+    numberOrNull(row.offense_rating) !== 5 ||
+    numberOrNull(row.defense_rating) !== 5 ||
+    String(row.development_rating || 'Average') !== 'Average'
+  );
+
+  return {
+    coachRows: coachRows.length,
+    matchedToRatingTeams: matched.length,
+    nonNeutralMatched: nonNeutral.length,
+    coachInfluence,
+    sampleNonNeutral: nonNeutral.slice(0, 5).map((row) => ({
+      team: row.team,
+      offense_rating: row.offense_rating,
+      defense_rating: row.defense_rating,
+      development_rating: row.development_rating
+    }))
+  };
 }
 
 async function generatePredictions(season: number) {

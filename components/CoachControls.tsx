@@ -28,12 +28,10 @@ export function CoachControls({
   initialRows: CoachRow[];
   activeConfig: FormulaConfig | null;
 }) {
-  const [secret, setSecret] = useState('');
   const [rows, setRows] = useState(() => initialRows.map(normalizeRow));
   const [dirtyTeams, setDirtyTeams] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState('');
   const [savingAll, setSavingAll] = useState(false);
-  const [recalculating, setRecalculating] = useState(false);
   const coachOffenseBoost = numberValue(activeConfig?.coach_offense_boost, 0.6);
   const coachDefenseBoost = numberValue(activeConfig?.coach_defense_boost, 0.6);
   const coachDevelopmentBoost = numberValue(activeConfig?.coach_development_boost, 1.0);
@@ -44,21 +42,28 @@ export function CoachControls({
   }
 
   async function saveAllAndRecalculate() {
-    if (!secret.trim()) {
-      setStatus('Enter your CRON_SECRET first. It is the same secret you use on the Formula page.');
-      return;
-    }
-
     const changedRows = rows.filter(row => dirtyTeams.has(row.team));
     setSavingAll(true);
     setStatus(changedRows.length ? `Saving ${changedRows.length} changed coach rows...` : 'No changed coach rows. Recalculating ratings...');
     try {
-      for (const row of changedRows) {
-        await saveCoachRow(row);
-      }
+      const response = await fetch('/api/coaches/save-and-recalc', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          rows: changedRows
+        })
+      });
+      const json = await response.json();
+      if (!response.ok || !json.ok) throw new Error(json.error || 'Save/recalculation failed');
       setDirtyTeams(new Set());
-      setStatus(`Saved ${changedRows.length} changed coach rows. Recalculating 2026 ratings now...`);
-      await recalculateRatings({ requireSecret: false });
+      const ratingsCount = json.result?.ratings?.count ?? 0;
+      const predictionCount = json.result?.predictions?.count ?? 0;
+      const diagnostics = json.result?.ratings?.coachDiagnostics;
+      const matched = diagnostics?.matchedToRatingTeams ?? '?';
+      const nonNeutral = diagnostics?.nonNeutralMatched ?? '?';
+      setStatus(`Saved ${json.saved ?? changedRows.length} rows. Recalculation finished: ${ratingsCount} ratings and ${predictionCount} predictions updated. Coach matches: ${matched}; changed coaches: ${nonNeutral}. Refresh the Ratings page.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -66,75 +71,11 @@ export function CoachControls({
     }
   }
 
-  async function saveCoachRow(row: ReturnType<typeof normalizeRow>) {
-    const response = await fetch('/api/coaches', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${secret.trim()}`
-      },
-      body: JSON.stringify({
-        team: row.team,
-        hireYear: row.hireYear,
-        offenseRating: row.offenseRating,
-        defenseRating: row.defenseRating,
-        developmentRating: row.developmentRating
-      })
-    });
-    const json = await response.json();
-    if (!response.ok || !json.ok) throw new Error(json.error || `Save failed for ${row.team}`);
-  }
-
-  async function recalculateRatings(options: { requireSecret?: boolean } = {}) {
-    if (options.requireSecret !== false && !secret.trim()) {
-      setStatus('Enter your CRON_SECRET first.');
-      return;
-    }
-
-    setRecalculating(true);
-    setStatus('Recalculating 2026 ratings and predictions with the saved coach inputs...');
-    try {
-      const response = await fetch('/api/jobs/update', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${secret.trim()}`
-        },
-        body: JSON.stringify({
-          season: 2026,
-          steps: ['ratings', 'predictions'],
-          optimizeBacktest: false
-        })
-      });
-      const json = await response.json();
-      if (!response.ok || !json.ok) throw new Error(json.error || 'Recalculation failed');
-      const ratingsCount = json.result?.ratings?.count ?? 0;
-      const predictionCount = json.result?.predictions?.count ?? 0;
-      const diagnostics = json.result?.ratings?.coachDiagnostics;
-      const matched = diagnostics?.matchedToRatingTeams ?? '?';
-      const nonNeutral = diagnostics?.nonNeutralMatched ?? '?';
-      setStatus(`Recalculation finished: ${ratingsCount} ratings and ${predictionCount} predictions updated. Coach matches: ${matched}; changed coaches: ${nonNeutral}. Refresh the Ratings page.`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-    } finally {
-      setRecalculating(false);
-    }
-  }
-
   return (
     <div className="coach-editor">
       <div className="panel coach-toolbar">
-        <label>
-          Admin Secret
-          <input
-            value={secret}
-            onChange={event => setSecret(event.target.value)}
-            type="password"
-            placeholder="CRON_SECRET"
-          />
-        </label>
-        <button disabled={savingAll || recalculating} onClick={saveAllAndRecalculate}>
-          {savingAll || recalculating ? 'Working' : `Save All + Recalc${dirtyTeams.size ? ` (${dirtyTeams.size})` : ''}`}
+        <button disabled={savingAll} onClick={saveAllAndRecalculate}>
+          {savingAll ? 'Working' : `Save All + Recalc${dirtyTeams.size ? ` (${dirtyTeams.size})` : ''}`}
         </button>
         <div className="coach-boost-summary">
           <span>Coach O Boost: {fmt(coachOffenseBoost)}</span>

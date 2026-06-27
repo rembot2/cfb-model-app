@@ -58,15 +58,32 @@ export async function fetchRatingsSeason(requestedSeason?: number) {
 
   if (!season) return { seasons, season: null, rows: [] };
 
-  const ratingsResult = await supabase
-    .from('ratings')
-    .select('*')
-    .eq('season', season)
-    .order('composite', { ascending: false })
-    .limit(250);
+  const [ratingsResult, teamsResult] = await Promise.all([
+    supabase
+      .from('ratings')
+      .select('*')
+      .eq('season', season)
+      .order('composite', { ascending: false })
+      .limit(1000),
+    shouldFilterToFbs(season)
+      ? supabase.from('teams').select('school').limit(500)
+      : Promise.resolve({ data: null, error: null })
+  ]);
 
   if (ratingsResult.error) throw new Error(ratingsResult.error.message);
-  return { seasons, season, rows: ratingsResult.data ?? [] };
+  if (teamsResult.error) throw new Error(teamsResult.error.message);
+
+  const rows = ratingsResult.data ?? [];
+  const fbsTeams = new Set((teamsResult.data ?? []).map(row => String(row.school)));
+  const filteredRows = fbsTeams.size
+    ? rows.filter(row => fbsTeams.has(String(row.team)))
+    : rows;
+
+  return { seasons, season, rows: filteredRows };
+}
+
+function shouldFilterToFbs(season: number) {
+  return season >= 2022 && season <= 2025;
 }
 
 export async function fetchFormulaData() {

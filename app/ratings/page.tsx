@@ -23,6 +23,7 @@ export default async function RatingsPage({ searchParams }: { searchParams?: { s
       <Table
         rows={rows}
         columns={[
+          { label: 'Rank', className: 'num', render: (_row, index) => String(index + 1) },
           { label: 'Team', render: row => String(row.team ?? '') },
           { label: 'Composite', className: 'num', render: row => fmt(row.composite) },
           { label: 'Off', className: 'num', render: row => fmt(row.off_rating) },

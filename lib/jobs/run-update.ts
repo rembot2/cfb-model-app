@@ -28,6 +28,7 @@ type WeeklyRatingSource = {
 const weeklyRatingSourceCache = new Map<number, Promise<WeeklyRatingSource>>();
 const vegasLineCache = new Map<number, Promise<Map<string, number>>>();
 const fbsTeamCache = new Map<number, Promise<Set<string>>>();
+const gamesRefreshCache = new Map<number, Promise<unknown>>();
 
 export async function runModelUpdate(options: UpdateOptions) {
   const supabase = getServiceSupabase();
@@ -202,6 +203,14 @@ async function fetchGames(season: number) {
 
   await upsertRows(supabase, 'games', rows, 'cfbd_game_id');
   return { season, status: 'success', count: rows.length };
+}
+
+async function ensureGamesLoaded(season: number) {
+  const existing = gamesRefreshCache.get(season);
+  if (existing) return existing;
+  const promise = fetchGames(season);
+  gamesRefreshCache.set(season, promise);
+  return promise;
 }
 
 async function fetchTeamGameStats(season: number) {
@@ -467,6 +476,7 @@ async function generatePredictions(season: number) {
 
 async function runBacktest(season: number, optimize = true) {
   const supabase = getServiceSupabase();
+  await ensureGamesLoaded(season);
   const optimizationSeason = optimize ? await getLatestCompletedSeason() : null;
   const optimizerRows = optimize
     ? await runOptimizerThroughSeason(optimizationSeason ?? season)

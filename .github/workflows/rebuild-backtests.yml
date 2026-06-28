@@ -34,5 +34,5 @@ jobs:
           set -euo pipefail
           for season in 2022 2023 2024 2025; do
             echo "Rebuilding backtest for $season"
-            npm run job:update -- --season=$season --steps=backtest --optimizeBacktest=false
+            npm run job:update -- --season=$season --steps=games,backtest --optimizeBacktest=false
           done

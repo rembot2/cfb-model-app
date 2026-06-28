@@ -978,20 +978,12 @@ type RatedGameBuildOptions = {
 };
 
 async function buildRatedGamesForSeason(season: number, options: RatedGameBuildOptions = {}): Promise<RatedGame[]> {
-  const supabase = getServiceSupabase();
   const storedRatings = options.dynamicRatings ? null : await loadRatings(season);
   const activeConfig = options.dynamicRatings ? await loadActiveModelConfig() : null;
   const lineMap = options.includeVegasLines === false
     ? new Map<string, number>()
     : await getCachedVegasLineMap(new CfbdClient(), season);
-  const { data: games, error } = await supabase
-    .from('games')
-    .select('*')
-    .eq('season', season)
-    .not('home_points', 'is', null)
-    .not('away_points', 'is', null);
-
-  if (error) throw error;
+  const games = await loadCompletedGameRowsForSeason(season);
 
   const fbsTeams = await loadFbsTeamSet(season);
 
@@ -1004,7 +996,7 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
     )
     : null;
 
-  return (games || [])
+  return games
     .filter((game) => fbsTeams.has(String(game.home_team)) && fbsTeams.has(String(game.away_team)))
     .map((game): RatedGame | null => {
       const ratings = weeklyRatings?.get(Number(game.week)) || storedRatings;
@@ -1025,6 +1017,29 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
       };
     })
     .filter((game): game is RatedGame => game !== null);
+}
+
+async function loadCompletedGameRowsForSeason(season: number) {
+  const supabase = getServiceSupabase();
+  const pageSize = 1000;
+  const rows: any[] = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('games')
+      .select('*')
+      .eq('season', season)
+      .not('home_points', 'is', null)
+      .not('away_points', 'is', null)
+      .order('week', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+
+  return rows;
 }
 
 async function loadFbsTeamSet(season: number) {

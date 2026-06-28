@@ -616,17 +616,154 @@ function uniqueNumbers(values: number[]) {
   return [...new Set(values.map((value) => Math.round(Number(value))).filter((value) => Number.isFinite(value) && value > 0))];
 }
 
+async function loadCoachRows() {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from('coach_configs')
+    .select('team,coach_name,hire_year,offense_rating,defense_rating,development_rating');
+  if (error) throw error;
+  return data || [];
+}
+
+function applyCoachInfluenceToRatedGames(
+  games: RatedGame[],
+  coachRows: any[],
+  currentInfluence: CoachInfluence,
+  candidateInfluence: CoachInfluence
+) {
+  const coachMap = new Map(coachRows.map((row) => [String(row.team), row]));
+  return games.map((game) => ({
+    ...game,
+    home: applyCoachInfluenceToRating(game.home, game.season, coachMap.get(game.home.team), currentInfluence, candidateInfluence),
+    away: applyCoachInfluenceToRating(game.away, game.season, coachMap.get(game.away.team), currentInfluence, candidateInfluence)
+  }));
+}
+
+function applyCoachInfluenceToRating(
+  rating: Rating,
+  season: number,
+  coachRow: any,
+  currentInfluence: CoachInfluence,
+  candidateInfluence: CoachInfluence
+): Rating {
+  if (!coachRow) return rating;
+  const hireYear = numberOrNull(coachRow.hire_year) ?? 0;
+  if (hireYear > season) return rating;
+
+  const offenseRating = numberOrNull(coachRow.offense_rating) ?? 5.5;
+  const defenseRating = numberOrNull(coachRow.defense_rating) ?? 5.5;
+  const developmentRating = String(coachRow.development_rating || 'Average');
+  const offenseDelta = (offenseRating - 5.5) * (candidateInfluence.offenseBoost - currentInfluence.offenseBoost);
+  const defenseDelta = (defenseRating - 5.5) * (candidateInfluence.defenseBoost - currentInfluence.defenseBoost);
+  const developmentDelta = developmentScore(developmentRating) * (candidateInfluence.developmentBoost - currentInfluence.developmentBoost);
+  const offRating = clampModelRating((rating.offRating || 0) + offenseDelta);
+  const defRating = clampModelRating((rating.defRating || 0) + defenseDelta);
+
+  return {
+    ...rating,
+    offRating,
+    defRating,
+    rushOff: clampModelRating((rating.rushOff || 0) + offenseDelta),
+    passOff: clampModelRating((rating.passOff || 0) + offenseDelta),
+    rushDef: clampModelRating((rating.rushDef || 0) + defenseDelta),
+    passDef: clampModelRating((rating.passDef || 0) + defenseDelta),
+    composite: clampModelRating((rating.composite || 0) + (offenseDelta + defenseDelta) / 2 + developmentDelta)
+  };
+}
+
+async function optimizeRampWeeksForHoldout(
+  season: number,
+  ratingFormula: RatingFormula,
+  coachInfluence: CoachInfluence,
+  weights: ModelWeights,
+  calibration: ModelCalibration
+) {
+  const rampOptions = uniqueNumbers([ratingFormula.talentRampWeeks, 4, 6, 8, 10, 12]);
+  let bestRamp = ratingFormula.talentRampWeeks;
+  let bestScore = Infinity;
+
+  for (const rampWeeks of rampOptions) {
+    const games = await buildRatedGamesForSeason(season, {
+      dynamicRatings: true,
+      ratingFormula: {
+        ...ratingFormula,
+        talentRampWeeks: rampWeeks
+      },
+      coachInfluence
+    });
+    const score = evaluateRatedGames(games, weights, calibration).summary.modelScore;
+    if (games.length && score < bestScore) {
+      bestScore = score;
+      bestRamp = rampWeeks;
+    }
+  }
+
+  return bestRamp;
+}
+
+function developmentScore(value: string) {
+  switch (value) {
+    case 'Elite':
+      return 2;
+    case 'Good':
+      return 1;
+    case 'Poor':
+      return -1;
+    case 'Terrible':
+      return -2;
+    default:
+      return 0;
+  }
+}
+
+function clampModelRating(value: number) {
+  return Math.max(0, Math.min(100, round2(value)));
+}
+
 async function runOptimizerThroughSeason(season: number) {
   const supabase = getServiceSupabase();
   const currentConfig = await loadActiveModelConfig();
   const ratedGames: RatedGame[] = [];
+  const coachRows = await loadCoachRows();
+  const coachOptions = buildCoachInfluenceCandidates(currentConfig.coachInfluence);
+  let selectedResults: ReturnType<typeof optimizeWeights> = [];
+  let selectedCoachInfluence = currentConfig.coachInfluence;
 
   for (const s of [...new Set([2022, 2023, 2024, 2025, season])]) {
     if (s > season) continue;
     ratedGames.push(...await buildRatedGamesForSeason(s));
   }
 
-  const results = optimizeWeights(ratedGames).slice(0, 250);
+  for (const coachInfluence of coachOptions) {
+    const adjustedGames = applyCoachInfluenceToRatedGames(
+      ratedGames,
+      coachRows,
+      currentConfig.coachInfluence,
+      coachInfluence
+    );
+    const candidateResults = optimizeWeights(adjustedGames);
+    if (!candidateResults.length) continue;
+    if (!selectedResults.length || candidateResults[0].finalScore < selectedResults[0].finalScore) {
+      selectedResults = candidateResults;
+      selectedCoachInfluence = coachInfluence;
+    }
+  }
+
+  const bestCandidate = selectedResults[0];
+  const selectedRampWeeks = bestCandidate
+    ? await optimizeRampWeeksForHoldout(
+      season,
+      currentConfig.ratingFormula,
+      selectedCoachInfluence,
+      bestCandidate.weights,
+      bestCandidate.calibration
+    )
+    : currentConfig.ratingFormula.talentRampWeeks;
+  const selectedRatingFormula = {
+    ...currentConfig.ratingFormula,
+    talentRampWeeks: selectedRampWeeks
+  };
+  const results = selectedResults.slice(0, 250);
   if (!results.length) return { status: 'skipped' as const, count: 0, best: null };
 
   const rows = results.map((row) => ({
@@ -640,10 +777,10 @@ async function runOptimizerThroughSeason(season: number) {
     home_field: row.calibration.homeField,
     margin_shrink: row.calibration.marginShrink,
     max_margin: row.calibration.maxMargin,
-    coach_offense_boost: currentConfig.coachInfluence.offenseBoost,
-    coach_defense_boost: currentConfig.coachInfluence.defenseBoost,
-    coach_development_boost: currentConfig.coachInfluence.developmentBoost,
-    rating_talent_ramp_weeks: currentConfig.ratingFormula.talentRampWeeks,
+    coach_offense_boost: selectedCoachInfluence.offenseBoost,
+    coach_defense_boost: selectedCoachInfluence.defenseBoost,
+    coach_development_boost: selectedCoachInfluence.developmentBoost,
+    rating_talent_ramp_weeks: selectedRampWeeks,
     train_score: round2(row.trainScore),
     holdout_score: round2(row.holdoutScore),
     all_score: round2(row.allScore),
@@ -654,15 +791,15 @@ async function runOptimizerThroughSeason(season: number) {
 
   await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
   const best = results[0];
-  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, currentConfig.coachInfluence, currentConfig.ratingFormula);
+  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, selectedCoachInfluence, selectedRatingFormula);
   return {
     status: 'success' as const,
     count: rows.length,
     best: {
       weights: best.weights,
       calibration: best.calibration,
-      coachInfluence: currentConfig.coachInfluence,
-      ratingFormula: currentConfig.ratingFormula,
+      coachInfluence: selectedCoachInfluence,
+      ratingFormula: selectedRatingFormula,
       finalScore: round2(best.finalScore)
     }
   };

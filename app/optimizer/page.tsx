@@ -1,11 +1,18 @@
 import { Table } from '@/components/Table';
-import { fetchTable } from '@/lib/db/queries';
+import { getPublicSupabase } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function OptimizerPage() {
-  const rows = await fetchTable('weight_optimizer', 200);
-  rows.sort((a, b) => Number(a.rank) - Number(b.rank));
+  const supabase = getPublicSupabase();
+  const { data, error } = await supabase
+    .from('weight_optimizer')
+    .select('*')
+    .order('final_score', { ascending: true })
+    .order('rank', { ascending: true })
+    .limit(100);
+  if (error) throw new Error(error.message);
+  const rows = data || [];
 
   return (
     <>
@@ -13,13 +20,22 @@ export default async function OptimizerPage() {
         <div>
           <div className="eyebrow">Optimizer</div>
           <h2>Weight Results</h2>
+          <p className="page-subtitle">Rows are sorted by final score, so the first row is the best current formula candidate.</p>
         </div>
       </header>
+      <section className="panel optimizer-summary">
+        <h3>How To Read This</h3>
+        <p>
+          Lower final score is better. The optimizer tests spread weights, points per rating, home field, shrink, max margin,
+          coach boost strength, and ramp weeks. The row labeled BEST is the formula that was saved as active.
+        </p>
+      </section>
       <Table
         rows={rows}
         columns={[
-          { label: 'Rank', className: 'num', render: row => String(row.rank ?? '') },
+          { label: 'Rank', className: 'num', render: (_row, index) => String(index + 1) },
           { label: 'Use', render: row => String(row.use_this ?? '') },
+          { label: 'Final Score', className: 'num', render: row => fmt(row.final_score) },
           { label: 'Pass', className: 'num', render: row => fmt(row.pass_weight) },
           { label: 'Rush', className: 'num', render: row => fmt(row.rush_weight) },
           { label: 'Overall', className: 'num', render: row => fmt(row.overall_weight) },
@@ -32,7 +48,7 @@ export default async function OptimizerPage() {
           { label: 'Coach D', className: 'num', render: row => fmt(row.coach_defense_boost) },
           { label: 'Dev', className: 'num', render: row => fmt(row.coach_development_boost) },
           { label: 'Ramp Wks', className: 'num', render: row => fmt(row.rating_talent_ramp_weeks) },
-          { label: 'Final Score', className: 'num', render: row => fmt(row.final_score) }
+          { label: 'Stored Rank', className: 'num', render: row => String(row.rank ?? '') }
         ]}
       />
     </>

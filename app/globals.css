@@ -242,6 +242,17 @@ button:disabled {
   margin-top: 18px;
 }
 
+.optimizer-summary {
+  margin-bottom: 14px;
+}
+
+.optimizer-summary p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
 .formula-reference p {
   color: var(--muted);
   font-size: 13px;

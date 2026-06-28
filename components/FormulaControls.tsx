@@ -143,6 +143,29 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
     }
   }
 
+  async function runFullOptimizer() {
+    setBusy(true);
+    setStatus('Starting full GitHub optimizer...');
+    try {
+      const response = await fetch('/api/actions/full-optimizer', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          season: runSeason >= 2026 ? 2025 : runSeason
+        })
+      });
+      const json = await readJsonResponse(response);
+      if (!response.ok || !json.ok) throw new Error(json.error || 'Full optimizer failed to start');
+      setStatus('Full optimizer started in GitHub Actions. It will update the optimizer table when it finishes.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="formula-layout">
       <section className="panel formula-panel">
@@ -201,11 +224,7 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           </button>
           <button
             disabled={busy}
-            onClick={() => runUpdate('2026 backtest optimizer', {
-              season: runSeason,
-              steps: ['optimizer'],
-              optimizeBacktest: true
-            })}
+            onClick={runFullOptimizer}
           >
             Run Optimizer
           </button>

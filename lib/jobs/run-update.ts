@@ -678,7 +678,8 @@ async function optimizeRampWeeksForHoldout(
   weights: ModelWeights,
   calibration: ModelCalibration
 ) {
-  const rampOptions = uniqueNumbers([ratingFormula.talentRampWeeks, 4, 6, 8, 10, 12]);
+  const rampOptions = uniqueNumbers([ratingFormula.talentRampWeeks, 6, 10]);
+  const sampleWeeks = [3, 8, 13];
   let bestRamp = ratingFormula.talentRampWeeks;
   let bestScore = Infinity;
 
@@ -689,7 +690,9 @@ async function optimizeRampWeeksForHoldout(
         ...ratingFormula,
         talentRampWeeks: rampWeeks
       },
-      coachInfluence
+      coachInfluence,
+      includeVegasLines: false,
+      ratingWeeks: sampleWeeks
     });
     const score = evaluateRatedGames(games, weights, calibration).summary.modelScore;
     if (games.length && score < bestScore) {
@@ -731,7 +734,7 @@ async function runOptimizerThroughSeason(season: number) {
 
   for (const s of [...new Set([2022, 2023, 2024, 2025, season])]) {
     if (s > season) continue;
-    ratedGames.push(...await buildRatedGamesForSeason(s));
+    ratedGames.push(...await buildRatedGamesForSeason(s, { includeVegasLines: false }));
   }
 
   for (const coachInfluence of coachOptions) {
@@ -863,14 +866,17 @@ type RatedGameBuildOptions = {
   dynamicRatings?: boolean;
   ratingFormula?: RatingFormula;
   coachInfluence?: CoachInfluence;
+  includeVegasLines?: boolean;
+  ratingWeeks?: number[];
 };
 
 async function buildRatedGamesForSeason(season: number, options: RatedGameBuildOptions = {}): Promise<RatedGame[]> {
   const supabase = getServiceSupabase();
   const storedRatings = options.dynamicRatings ? null : await loadRatings(season);
   const activeConfig = options.dynamicRatings ? await loadActiveModelConfig() : null;
-  const cfbd = new CfbdClient();
-  const lineMap = await getCachedVegasLineMap(cfbd, season);
+  const lineMap = options.includeVegasLines === false
+    ? new Map<string, number>()
+    : await getCachedVegasLineMap(new CfbdClient(), season);
   const { data: games, error } = await supabase
     .from('games')
     .select('*')
@@ -884,7 +890,8 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
     ? await buildWeeklyRatingMaps(
       season,
       options.ratingFormula || activeConfig.ratingFormula,
-      options.coachInfluence || activeConfig.coachInfluence
+      options.coachInfluence || activeConfig.coachInfluence,
+      options.ratingWeeks
     )
     : null;
 
@@ -913,11 +920,14 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
 async function buildWeeklyRatingMaps(
   season: number,
   ratingFormula: RatingFormula,
-  coachInfluence: CoachInfluence
+  coachInfluence: CoachInfluence,
+  ratingWeeks?: number[]
 ) {
   const { rawStats, rosterRows, coachRows, talentScores } = await getWeeklyRatingSource(season);
+  const allowedWeeks = ratingWeeks?.length ? new Set(ratingWeeks.map(Number)) : null;
   const weeks = [...new Set(rawStats.filter((row) => row.season === season).map((row) => row.week))]
     .filter((week) => Number.isFinite(week))
+    .filter((week) => !allowedWeeks || allowedWeeks.has(Number(week)))
     .sort((a, b) => a - b);
   const ratingMaps = new Map<number, Map<string, Rating>>();
 

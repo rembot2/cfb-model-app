@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "job:update": "tsx scripts/run-update.ts"
+    "job:update": "tsx scripts/run-update.ts",
+    "job:full-optimizer": "tsx scripts/run-full-optimizer.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

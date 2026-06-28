@@ -601,6 +601,7 @@ function mapRawStatRow(row: Record<string, any>): RawTeamGameStat {
 function buildCoachInfluenceCandidates(current: CoachInfluence) {
   const candidates: CoachInfluence[] = [
     current,
+    { offenseBoost: 0.25, defenseBoost: 0.25, developmentBoost: 0.5 },
     { offenseBoost: 0.6, defenseBoost: 0.6, developmentBoost: 1.0 },
     { offenseBoost: 1.0, defenseBoost: 1.0, developmentBoost: 1.5 }
   ];
@@ -689,6 +690,94 @@ function optimizeRampWeeksForHoldout(
   if (early.modelScore > late.modelScore + 1.5) return Math.max(currentRamp, 10);
   if (late.modelScore > middle.modelScore + 1.5) return Math.min(currentRamp, 6);
   return currentRamp;
+}
+
+export async function runFullOptimizerThroughSeason(season: number) {
+  const supabase = getServiceSupabase();
+  const currentConfig = await loadActiveModelConfig();
+  const coachOptions = buildCoachInfluenceCandidates(currentConfig.coachInfluence);
+  const rampOptions = uniqueNumbers([currentConfig.ratingFormula.talentRampWeeks, 4, 6, 8, 10, 12]);
+  const seasons = [...new Set([2022, 2023, 2024, 2025, season])].filter((s) => s <= season);
+  let selectedResults: ReturnType<typeof optimizeWeights> = [];
+  let selectedCoachInfluence = currentConfig.coachInfluence;
+  let selectedRatingFormula = currentConfig.ratingFormula;
+
+  for (const coachInfluence of coachOptions) {
+    for (const rampWeeks of rampOptions) {
+      const ratingFormula = {
+        ...currentConfig.ratingFormula,
+        talentRampWeeks: rampWeeks
+      };
+      const ratedGames: RatedGame[] = [];
+
+      for (const s of seasons) {
+        ratedGames.push(...await buildRatedGamesForSeason(s, {
+          dynamicRatings: true,
+          ratingFormula,
+          coachInfluence,
+          includeVegasLines: false
+        }));
+      }
+
+      const candidateResults = optimizeWeights(ratedGames);
+      const candidateBest = candidateResults[0];
+      if (!candidateBest) continue;
+      console.log(JSON.stringify({
+        coachInfluence,
+        rampWeeks,
+        games: ratedGames.length,
+        finalScore: round2(candidateBest.finalScore)
+      }));
+
+      if (!selectedResults.length || candidateBest.finalScore < selectedResults[0].finalScore) {
+        selectedResults = candidateResults;
+        selectedCoachInfluence = coachInfluence;
+        selectedRatingFormula = ratingFormula;
+      }
+    }
+  }
+
+  const results = selectedResults.slice(0, 250);
+  if (!results.length) return { status: 'skipped' as const, count: 0, best: null };
+
+  const rows = results.map((row) => ({
+    rank: row.rank,
+    use_this: row.useThis,
+    pass_weight: row.weights.pass,
+    rush_weight: row.weights.rush,
+    overall_weight: row.weights.overall,
+    composite_weight: row.weights.composite,
+    points_per_rating: row.calibration.pointsPerRating,
+    home_field: row.calibration.homeField,
+    margin_shrink: row.calibration.marginShrink,
+    max_margin: row.calibration.maxMargin,
+    coach_offense_boost: selectedCoachInfluence.offenseBoost,
+    coach_defense_boost: selectedCoachInfluence.defenseBoost,
+    coach_development_boost: selectedCoachInfluence.developmentBoost,
+    rating_talent_ramp_weeks: selectedRatingFormula.talentRampWeeks,
+    train_score: round2(row.trainScore),
+    holdout_score: round2(row.holdoutScore),
+    all_score: round2(row.allScore),
+    stability_penalty: round2(row.stabilityPenalty),
+    final_score: round2(row.finalScore),
+    synced_at: new Date().toISOString()
+  }));
+
+  await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
+  const best = results[0];
+  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, selectedCoachInfluence, selectedRatingFormula);
+
+  return {
+    status: 'success' as const,
+    count: rows.length,
+    best: {
+      weights: best.weights,
+      calibration: best.calibration,
+      coachInfluence: selectedCoachInfluence,
+      ratingFormula: selectedRatingFormula,
+      finalScore: round2(best.finalScore)
+    }
+  };
 }
 
 function developmentScore(value: string) {

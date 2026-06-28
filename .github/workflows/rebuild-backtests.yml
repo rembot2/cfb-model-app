@@ -1,0 +1,38 @@
+name: Rebuild all backtests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfb-rebuild-backtests
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm install --no-package-lock
+
+      - name: Rebuild completed-season backtests
+        run: |
+          set -euo pipefail
+          for season in 2022 2023 2024 2025; do
+            echo "Rebuilding backtest for $season"
+            npm run job:update -- --season=$season --steps=backtest --optimizeBacktest=false
+          done

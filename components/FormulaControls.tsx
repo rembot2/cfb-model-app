@@ -127,15 +127,23 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
   }
 
   async function runFullRefresh() {
+    await runGithubWorkflow('full refresh', '/api/actions/full-refresh', 'Full refresh started in GitHub Actions. It will run ratings, optimizer, backtests, and 2026 predictions.');
+  }
+
+  async function runGithubWorkflow(label: string, url: string, successMessage: string, body?: Record<string, unknown>) {
     setBusy(true);
-    setStatus('Starting full GitHub refresh...');
+    setStatus(`Starting ${label} in GitHub Actions...`);
     try {
-      const response = await fetch('/api/actions/full-refresh', {
-        method: 'POST'
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: body ? {
+          'content-type': 'application/json'
+        } : undefined,
+        body: body ? JSON.stringify(body) : undefined
       });
       const json = await readJsonResponse(response);
-      if (!response.ok || !json.ok) throw new Error(json.error || 'Full refresh failed to start');
-      setStatus('Full refresh started in GitHub Actions. Check GitHub Actions for progress, then refresh this site when it completes.');
+      if (!response.ok || !json.ok) throw new Error(json.error || `${label} failed to start`);
+      setStatus(successMessage);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -144,26 +152,12 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
   }
 
   async function runFullOptimizer() {
-    setBusy(true);
-    setStatus('Starting full GitHub optimizer...');
-    try {
-      const response = await fetch('/api/actions/full-optimizer', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify({
-          season: runSeason >= 2026 ? 2025 : runSeason
-        })
-      });
-      const json = await readJsonResponse(response);
-      if (!response.ok || !json.ok) throw new Error(json.error || 'Full optimizer failed to start');
-      setStatus('Full optimizer started in GitHub Actions. It will update the optimizer table when it finishes.');
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
+    await runGithubWorkflow(
+      'full optimizer',
+      '/api/actions/full-optimizer',
+      'Full optimizer started in GitHub Actions. It will update the optimizer table and active formula when it finishes.',
+      { season: runSeason >= 2026 ? 2025 : runSeason }
+    );
   }
 
   return (
@@ -214,19 +208,29 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           </button>
           <button
             disabled={busy}
-            onClick={() => runUpdate('backtest with active formula', {
-              season: runSeason,
-              steps: ['backtest'],
-              optimizeBacktest: false
-            })}
+            onClick={() => runGithubWorkflow(
+              'all backtests',
+              '/api/actions/rebuild-backtests',
+              'All backtests started in GitHub Actions. It will rebuild 2022-2025 using the active formula.'
+            )}
           >
-            Run Backtest
+            Run All Backtests
           </button>
           <button
             disabled={busy}
             onClick={runFullOptimizer}
           >
             Run Optimizer
+          </button>
+          <button
+            disabled={busy}
+            onClick={() => runGithubWorkflow(
+              'all ratings',
+              '/api/actions/recalculate-ratings',
+              'All ratings started in GitHub Actions. It will recalculate 2022-2026 ratings and predictions.'
+            )}
+          >
+            Recalc All Ratings
           </button>
           <button disabled={busy} onClick={runFullRefresh}>Run Full Refresh</button>
         </div>

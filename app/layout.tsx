@@ -14,6 +14,7 @@ const nav = [
   ['Coaches', '/coaches'],
   ['Games', '/games'],
   ['Backtest', '/backtest'],
+  ['Backtest Results', '/backtest-results'],
   ['Optimizer', '/optimizer']
 ];
 

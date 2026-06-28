@@ -1,5 +1,5 @@
 import { BarList } from '@/components/BarList';
-import { fetchDashboardData } from '@/lib/db/queries';
+import { fetchDashboardData, summarizeBacktestGames } from '@/lib/db/queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,7 @@ export default async function DashboardPage() {
     .filter(row => Number(row.season) === latestSeason)
     .sort((a, b) => Number(b.composite || 0) - Number(a.composite || 0));
   const top = ratings[0] ?? {};
-  const overall = data.summary.find(row => String(row.week).toUpperCase() === 'OVERALL') ?? {};
+  const overall = summarizeBacktestGames(data.backtestGames);
   const best = data.optimizer.find(row => String(row.use_this).toUpperCase() === 'BEST') ?? data.optimizer[0] ?? {};
   const spreadBuckets = data.buckets.filter(row => row.bucket_type === 'spread');
   const vegasBuckets = data.buckets.filter(row => row.bucket_type === 'vegas_diff');
@@ -79,7 +79,7 @@ function pct(value: unknown) {
   return formatted === '-' ? '-' : `${formatted}%`;
 }
 
-function record(row: Record<string, unknown>) {
+function record(row: ReturnType<typeof summarizeBacktestGames>) {
   const plays = Number(row.vegas_edge_plays || 0);
   if (!plays) return 'No edge plays loaded';
   return `${row.vegas_edge_wins ?? 0}-${row.vegas_edge_losses ?? 0}-${row.vegas_edge_pushes ?? 0}`;

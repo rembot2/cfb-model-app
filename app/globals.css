@@ -649,6 +649,18 @@ tbody tr:nth-child(even) {
   background: #f9fbfd;
 }
 
+.summary-total-row,
+tbody tr.summary-total-row:nth-child(even) {
+  background: #e9f2ff;
+  color: var(--ink);
+  font-weight: 900;
+  box-shadow: inset 4px 0 0 var(--blue);
+}
+
+.backtest-season-panel {
+  margin-top: 18px;
+}
+
 .pill {
   display: inline-flex;
   min-width: 58px;

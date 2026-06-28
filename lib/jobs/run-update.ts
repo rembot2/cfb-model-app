@@ -27,6 +27,7 @@ type WeeklyRatingSource = {
 
 const weeklyRatingSourceCache = new Map<number, Promise<WeeklyRatingSource>>();
 const vegasLineCache = new Map<number, Promise<Map<string, number>>>();
+const fbsTeamCache = new Map<number, Promise<Set<string>>>();
 
 export async function runModelUpdate(options: UpdateOptions) {
   const supabase = getServiceSupabase();
@@ -992,7 +993,7 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
 
   if (error) throw error;
 
-  const fbsTeams = await loadFbsTeamSet();
+  const fbsTeams = await loadFbsTeamSet(season);
 
   const weeklyRatings = options.dynamicRatings && activeConfig
     ? await buildWeeklyRatingMaps(
@@ -1026,20 +1027,26 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
     .filter((game): game is RatedGame => game !== null);
 }
 
-async function loadFbsTeamSet() {
-  const supabase = getServiceSupabase();
-  const { data, error } = await supabase
-    .from('teams')
-    .select('school')
-    .order('school', { ascending: true })
-    .limit(500);
+async function loadFbsTeamSet(season: number) {
+  const existing = fbsTeamCache.get(season);
+  if (existing) return existing;
+  const promise = fetchSeasonFbsTeamSet(season);
+  fbsTeamCache.set(season, promise);
+  return promise;
+}
 
-  if (error) throw error;
-  const teams = new Set((data || []).map((row) => String(row.school)));
-  if (!teams.size) {
-    throw new Error('No FBS teams are loaded. Run the teams update before running backtests.');
+async function fetchSeasonFbsTeamSet(season: number) {
+  const teams = await new CfbdClient().getTeams(season);
+  const names = new Set(
+    teams
+      .map((team) => String(team?.school || '').trim())
+      .filter(Boolean)
+  );
+
+  if (!names.size) {
+    throw new Error(`No season-specific FBS teams loaded for ${season}.`);
   }
-  return teams;
+  return names;
 }
 
 async function buildWeeklyRatingMaps(

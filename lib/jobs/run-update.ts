@@ -333,6 +333,12 @@ async function calculateRatings(season: number) {
       coaches: coachRows || []
     }
   );
+  const { data: existingRatings, error: existingRatingsError } = await supabase
+    .from('ratings')
+    .select('team,off_rating,def_rating,composite')
+    .eq('season', season);
+  if (existingRatingsError) throw existingRatingsError;
+  const existingRatingMap = new Map((existingRatings || []).map((row) => [String(row.team), row]));
 
   const rows = ratings.map((rating) => ({
     season,
@@ -340,6 +346,9 @@ async function calculateRatings(season: number) {
     off_rating: rating.offRating,
     def_rating: rating.defRating,
     composite: rating.composite,
+    off_rating_delta: ratingDelta(rating.offRating, existingRatingMap.get(rating.team)?.off_rating),
+    def_rating_delta: ratingDelta(rating.defRating, existingRatingMap.get(rating.team)?.def_rating),
+    composite_delta: ratingDelta(rating.composite, existingRatingMap.get(rating.team)?.composite),
     games: rating.games,
     rush_off_rating: rating.rushOff,
     pass_off_rating: rating.passOff,
@@ -1299,6 +1308,14 @@ function buildSummaryRow(season: string, week: string, games: EvaluatedGame[]) {
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function ratingDelta(nextValue: unknown, previousValue: unknown) {
+  const next = numberOrNull(nextValue);
+  const previous = numberOrNull(previousValue);
+  if (next === null || previous === null) return null;
+  const delta = round2(next - previous);
+  return Math.abs(delta) < 0.01 ? 0 : delta;
 }
 
 async function upsertRows(

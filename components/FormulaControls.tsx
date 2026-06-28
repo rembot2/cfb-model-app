@@ -126,6 +126,23 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
     }
   }
 
+  async function runFullRefresh() {
+    setBusy(true);
+    setStatus('Starting full GitHub refresh...');
+    try {
+      const response = await fetch('/api/actions/full-refresh', {
+        method: 'POST'
+      });
+      const json = await readJsonResponse(response);
+      if (!response.ok || !json.ok) throw new Error(json.error || 'Full refresh failed to start');
+      setStatus('Full refresh started in GitHub Actions. Check GitHub Actions for progress, then refresh this site when it completes.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="formula-layout">
       <section className="panel formula-panel">
@@ -192,6 +209,7 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           >
             Run Optimizer
           </button>
+          <button disabled={busy} onClick={runFullRefresh}>Run Full Refresh</button>
         </div>
         {status ? <p className="status-line">{status}</p> : null}
       </section>

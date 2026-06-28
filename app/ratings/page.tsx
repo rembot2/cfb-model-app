@@ -36,12 +36,25 @@ export default async function RatingsPage({ searchParams }: { searchParams?: { s
               );
             }
           },
-          { label: 'Composite', className: 'num', render: row => fmt(row.composite) },
-          { label: 'Offense', className: 'num', render: row => fmt(row.off_rating) },
-          { label: 'Defense', className: 'num', render: row => fmt(row.def_rating) }
+          { label: 'Composite', className: 'num', render: row => <RatingWithDelta value={row.composite} delta={row.composite_delta} /> },
+          { label: 'Offense', className: 'num', render: row => <RatingWithDelta value={row.off_rating} delta={row.off_rating_delta} /> },
+          { label: 'Defense', className: 'num', render: row => <RatingWithDelta value={row.def_rating} delta={row.def_rating_delta} /> }
         ]}
       />
     </>
+  );
+}
+
+function RatingWithDelta({ value, delta }: { value: unknown; delta: unknown }) {
+  const n = Number(delta);
+  const direction = Number.isFinite(n) && Math.abs(n) >= 0.01
+    ? n > 0 ? 'up' : 'down'
+    : '';
+  return (
+    <span className="rating-delta-cell">
+      <span>{fmt(value)}</span>
+      {direction ? <span className={`rating-change ${direction}`} title={`${direction === 'up' ? '+' : ''}${fmt(n)}`} /> : null}
+    </span>
   );
 }
 

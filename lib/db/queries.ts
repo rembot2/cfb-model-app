@@ -5,25 +5,25 @@ export async function fetchDashboardData() {
 
   const [
     ratings,
-    backtestGames,
     optimizer,
     buckets,
-    predictions
+    predictions,
+    backtestGames
   ] = await Promise.all([
     supabase.from('ratings').select('*').order('season', { ascending: false }).order('composite', { ascending: false }).limit(300),
-    supabase.from('backtest_games').select('*').order('season', { ascending: false }).order('week', { ascending: false }).limit(10000),
     supabase.from('weight_optimizer').select('*').order('rank', { ascending: true }).limit(25),
     supabase.from('model_buckets').select('*').order('bucket_type').order('id'),
-    supabase.from('predictions').select('*').order('season', { ascending: false }).order('week', { ascending: true }).limit(100)
+    supabase.from('predictions').select('*').order('season', { ascending: false }).order('week', { ascending: true }).limit(100),
+    fetchAllBacktestGames()
   ]);
 
-  for (const result of [ratings, backtestGames, optimizer, buckets, predictions]) {
+  for (const result of [ratings, optimizer, buckets, predictions]) {
     if (result.error) throw new Error(result.error.message);
   }
 
   return {
     ratings: ratings.data ?? [],
-    backtestGames: backtestGames.data ?? [],
+    backtestGames,
     optimizer: optimizer.data ?? [],
     buckets: buckets.data ?? [],
     predictions: predictions.data ?? []
@@ -63,17 +63,10 @@ export type BacktestWeekSummary = BacktestSummaryStats & {
 };
 
 export async function fetchBacktestSeason(requestedSeason?: number) {
-  const supabase = getPublicSupabase();
-  const seasonResult = await supabase
-    .from('backtest_games')
-    .select('season')
-    .order('season', { ascending: false })
-    .limit(10000);
-
-  if (seasonResult.error) throw new Error(seasonResult.error.message);
+  const allGames = await fetchAllBacktestGames();
 
   const seasons = [...new Set(
-    (seasonResult.data ?? [])
+    allGames
       .map(row => Number(row.season))
       .filter(Number.isFinite)
   )].sort((a, b) => b - a);
@@ -81,16 +74,6 @@ export async function fetchBacktestSeason(requestedSeason?: number) {
     ? requestedSeason
     : seasons[0] ?? null;
 
-  const allRowsResult = await supabase
-    .from('backtest_games')
-    .select('*')
-    .order('season', { ascending: false })
-    .order('week', { ascending: true })
-    .limit(10000);
-
-  if (allRowsResult.error) throw new Error(allRowsResult.error.message);
-
-  const allGames = allRowsResult.data ?? [];
   const games = season
     ? allGames.filter(row => Number(row.season) === season)
     : [];
@@ -116,6 +99,30 @@ export async function fetchBacktestResultsSeason(requestedSeason?: number) {
       .slice()
       .sort((a, b) => Number(a.week) - Number(b.week) || String(a.away_team).localeCompare(String(b.away_team)))
   };
+}
+
+async function fetchAllBacktestGames() {
+  const supabase = getPublicSupabase();
+  const pageSize = 1000;
+  const rows: Record<string, unknown>[] = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from('backtest_games')
+      .select('*')
+      .order('season', { ascending: false })
+      .order('week', { ascending: true })
+      .range(from, to);
+
+    if (error) throw new Error(error.message);
+    const page = data ?? [];
+    rows.push(...page);
+
+    if (page.length < pageSize) break;
+  }
+
+  return rows;
 }
 
 export function buildWeeklyBacktestSummary(rows: Record<string, unknown>[], season: number | null): BacktestWeekSummary[] {

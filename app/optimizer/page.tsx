@@ -8,9 +8,8 @@ export default async function OptimizerPage() {
   const { data, error } = await supabase
     .from('weight_optimizer')
     .select('*')
-    .order('final_score', { ascending: true })
     .order('rank', { ascending: true })
-    .limit(100);
+    .limit(250);
   if (error) throw new Error(error.message);
   const rows = data || [];
 
@@ -20,7 +19,7 @@ export default async function OptimizerPage() {
         <div>
           <div className="eyebrow">Optimizer</div>
           <h2>Weight Results</h2>
-          <p className="page-subtitle">Rows are sorted by final score, so the first row is the best current formula candidate.</p>
+          <p className="page-subtitle">Rows are ranked after testing coach boosts, ramp weeks, spread weights, and calibration.</p>
         </div>
       </header>
       <section className="panel optimizer-summary">
@@ -47,8 +46,7 @@ export default async function OptimizerPage() {
           { label: 'Coach O', className: 'num', render: row => fmt(row.coach_offense_boost) },
           { label: 'Coach D', className: 'num', render: row => fmt(row.coach_defense_boost) },
           { label: 'Dev', className: 'num', render: row => fmt(row.coach_development_boost) },
-          { label: 'Ramp Wks', className: 'num', render: row => fmt(row.rating_talent_ramp_weeks) },
-          { label: 'Stored Rank', className: 'num', render: row => String(row.rank ?? '') }
+          { label: 'Ramp Wks', className: 'num', render: row => fmt(row.rating_talent_ramp_weeks) }
         ]}
       />
     </>

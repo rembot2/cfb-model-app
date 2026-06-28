@@ -1,0 +1,38 @@
+name: Recalculate all ratings
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfb-recalculate-ratings
+  cancel-in-progress: false
+
+jobs:
+  recalculate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm install --no-package-lock
+
+      - name: Recalculate ratings and predictions
+        run: |
+          set -euo pipefail
+          for season in 2022 2023 2024 2025 2026; do
+            echo "Recalculating ratings and predictions for $season"
+            npm run job:update -- --season=$season --steps=ratings,predictions --optimizeBacktest=false
+          done

@@ -707,9 +707,11 @@ export async function runFullOptimizerThroughSeason(season: number) {
   const coachOptions = buildCoachInfluenceCandidates(currentConfig.coachInfluence);
   const rampOptions = uniqueNumbers([currentConfig.ratingFormula.talentRampWeeks, 4, 6, 8, 10, 12]);
   const seasons = [...new Set([2022, 2023, 2024, 2025, season])].filter((s) => s <= season);
-  let selectedResults: ReturnType<typeof optimizeWeights> = [];
-  let selectedCoachInfluence = currentConfig.coachInfluence;
-  let selectedRatingFormula = currentConfig.ratingFormula;
+  const allResults: Array<{
+    row: ReturnType<typeof optimizeWeights>[number];
+    coachInfluence: CoachInfluence;
+    ratingFormula: RatingFormula;
+  }> = [];
 
   for (const coachInfluence of coachOptions) {
     for (const rampWeeks of rampOptions) {
@@ -731,27 +733,35 @@ export async function runFullOptimizerThroughSeason(season: number) {
       const candidateResults = optimizeWeights(ratedGames);
       const candidateBest = candidateResults[0];
       if (!candidateBest) continue;
+      allResults.push(...candidateResults.slice(0, 50).map((row) => ({
+        row,
+        coachInfluence,
+        ratingFormula
+      })));
       console.log(JSON.stringify({
         coachInfluence,
         rampWeeks,
         games: ratedGames.length,
         finalScore: round2(candidateBest.finalScore)
       }));
-
-      if (!selectedResults.length || candidateBest.finalScore < selectedResults[0].finalScore) {
-        selectedResults = candidateResults;
-        selectedCoachInfluence = coachInfluence;
-        selectedRatingFormula = ratingFormula;
-      }
     }
   }
 
-  const results = selectedResults.slice(0, 250);
+  allResults.sort((a, b) =>
+    a.row.finalScore - b.row.finalScore ||
+    a.row.holdoutScore - b.row.holdoutScore ||
+    a.row.allScore - b.row.allScore ||
+    a.row.stabilityPenalty - b.row.stabilityPenalty ||
+    a.row.holdoutAvgError - b.row.holdoutAvgError ||
+    a.row.holdoutRmse - b.row.holdoutRmse
+  );
+
+  const results = allResults.slice(0, 250);
   if (!results.length) return { status: 'skipped' as const, count: 0, best: null };
 
-  const rows = results.map((row) => ({
-    rank: row.rank,
-    use_this: row.useThis,
+  const rows = results.map(({ row, coachInfluence, ratingFormula }, index) => ({
+    rank: index + 1,
+    use_this: index === 0 ? 'BEST' : '',
     pass_weight: row.weights.pass,
     rush_weight: row.weights.rush,
     overall_weight: row.weights.overall,
@@ -760,10 +770,10 @@ export async function runFullOptimizerThroughSeason(season: number) {
     home_field: row.calibration.homeField,
     margin_shrink: row.calibration.marginShrink,
     max_margin: row.calibration.maxMargin,
-    coach_offense_boost: selectedCoachInfluence.offenseBoost,
-    coach_defense_boost: selectedCoachInfluence.defenseBoost,
-    coach_development_boost: selectedCoachInfluence.developmentBoost,
-    rating_talent_ramp_weeks: selectedRatingFormula.talentRampWeeks,
+    coach_offense_boost: coachInfluence.offenseBoost,
+    coach_defense_boost: coachInfluence.defenseBoost,
+    coach_development_boost: coachInfluence.developmentBoost,
+    rating_talent_ramp_weeks: ratingFormula.talentRampWeeks,
     train_score: round2(row.trainScore),
     holdout_score: round2(row.holdoutScore),
     all_score: round2(row.allScore),
@@ -774,17 +784,24 @@ export async function runFullOptimizerThroughSeason(season: number) {
 
   await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
   const best = results[0];
-  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, selectedCoachInfluence, selectedRatingFormula);
+  await activateOptimizedConfig(
+    supabase,
+    season,
+    best.row.weights,
+    best.row.calibration,
+    best.coachInfluence,
+    best.ratingFormula
+  );
 
   return {
     status: 'success' as const,
     count: rows.length,
     best: {
-      weights: best.weights,
-      calibration: best.calibration,
-      coachInfluence: selectedCoachInfluence,
-      ratingFormula: selectedRatingFormula,
-      finalScore: round2(best.finalScore)
+      weights: best.row.weights,
+      calibration: best.row.calibration,
+      coachInfluence: best.coachInfluence,
+      ratingFormula: best.ratingFormula,
+      finalScore: round2(best.row.finalScore)
     }
   };
 }

@@ -95,7 +95,7 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           ratingTalentRampWeeks
         })
       });
-      const json = await response.json();
+      const json = await readJsonResponse(response);
       if (!response.ok || !json.ok) throw new Error(json.error || 'Save failed');
       setStatus('Saved. This is now the active formula. Use the recalc buttons below to refresh the model outputs.');
     } catch (error) {
@@ -116,7 +116,7 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
         },
         body: JSON.stringify(body)
       });
-      const json = await response.json();
+      const json = await readJsonResponse(response);
       if (!response.ok || !json.ok) throw new Error(json.error || `${label} failed`);
       setStatus(`${label} finished. Refresh the page to see the updated tables.`);
     } catch (error) {
@@ -265,4 +265,13 @@ function percent(input: number) {
 
 function formatOption(option: number) {
   return Number.isInteger(option) ? String(option) : option.toFixed(2).replace(/0$/, '');
+}
+
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(text.slice(0, 220) || `Request failed with status ${response.status}`);
+  }
 }

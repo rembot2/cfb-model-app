@@ -49,10 +49,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --no-package-lock
 
       - name: Refresh 2026 source data
         shell: bash

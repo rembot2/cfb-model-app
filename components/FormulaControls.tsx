@@ -186,7 +186,7 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
             disabled={busy}
             onClick={() => runUpdate('2026 backtest optimizer', {
               season: runSeason,
-              steps: ['backtest'],
+              steps: ['optimizer'],
               optimizeBacktest: true
             })}
           >

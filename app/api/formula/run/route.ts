@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
 function parseSteps(value: unknown): UpdateStep[] | undefined {
   if (!value) return undefined;
-  const allowed = new Set<UpdateStep>(['teams', 'games', 'stats', 'rosters', 'coaches', 'ratings', 'predictions', 'backtest']);
+  const allowed = new Set<UpdateStep>(['teams', 'games', 'stats', 'rosters', 'coaches', 'ratings', 'predictions', 'backtest', 'optimizer']);
   const raw = Array.isArray(value) ? value.join(',') : String(value);
   const steps = raw
     .split(',')
@@ -44,7 +44,7 @@ function revalidateFormulaPaths(steps: UpdateStep[]) {
   if (steps.includes('predictions') || steps.includes('games')) {
     revalidatePath('/games');
   }
-  if (steps.includes('backtest')) {
+  if (steps.includes('backtest') || steps.includes('optimizer')) {
     revalidatePath('/backtest');
     revalidatePath('/optimizer');
   }

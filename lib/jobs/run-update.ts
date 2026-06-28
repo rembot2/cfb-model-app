@@ -16,7 +16,7 @@ type UpdateOptions = {
   optimizeBacktest?: boolean;
 };
 
-export type UpdateStep = 'teams' | 'games' | 'stats' | 'rosters' | 'coaches' | 'ratings' | 'predictions' | 'backtest';
+export type UpdateStep = 'teams' | 'games' | 'stats' | 'rosters' | 'coaches' | 'ratings' | 'predictions' | 'backtest' | 'optimizer';
 
 type WeeklyRatingSource = {
   rawStats: RawTeamGameStat[];
@@ -62,6 +62,7 @@ export async function runModelUpdate(options: UpdateOptions) {
     }
     if (steps.has('ratings')) result.ratings = await calculateRatings(options.season);
     if (steps.has('predictions')) result.predictions = await generatePredictions(options.season);
+    if (steps.has('optimizer')) result.optimizer = await runOptimizerThroughSeason(await getLatestCompletedSeason() ?? options.season);
     if (steps.has('backtest')) result.backtest = await runBacktest(options.season, options.optimizeBacktest !== false);
 
     await supabase
@@ -671,37 +672,23 @@ function applyCoachInfluenceToRating(
   };
 }
 
-async function optimizeRampWeeksForHoldout(
+function optimizeRampWeeksForHoldout(
   season: number,
   ratingFormula: RatingFormula,
-  coachInfluence: CoachInfluence,
+  games: RatedGame[],
   weights: ModelWeights,
   calibration: ModelCalibration
 ) {
-  const rampOptions = uniqueNumbers([ratingFormula.talentRampWeeks, 6, 10]);
-  const sampleWeeks = [3, 8, 13];
-  let bestRamp = ratingFormula.talentRampWeeks;
-  let bestScore = Infinity;
+  const holdoutGames = games.filter((game) => game.season === season);
+  const early = evaluateRatedGames(holdoutGames.filter((game) => game.week <= 4), weights, calibration).summary;
+  const middle = evaluateRatedGames(holdoutGames.filter((game) => game.week > 4 && game.week <= 9), weights, calibration).summary;
+  const late = evaluateRatedGames(holdoutGames.filter((game) => game.week > 9), weights, calibration).summary;
+  const currentRamp = Math.round(ratingFormula.talentRampWeeks || 8);
 
-  for (const rampWeeks of rampOptions) {
-    const games = await buildRatedGamesForSeason(season, {
-      dynamicRatings: true,
-      ratingFormula: {
-        ...ratingFormula,
-        talentRampWeeks: rampWeeks
-      },
-      coachInfluence,
-      includeVegasLines: false,
-      ratingWeeks: sampleWeeks
-    });
-    const score = evaluateRatedGames(games, weights, calibration).summary.modelScore;
-    if (games.length && score < bestScore) {
-      bestScore = score;
-      bestRamp = rampWeeks;
-    }
-  }
-
-  return bestRamp;
+  if (!early.games || !late.games) return currentRamp;
+  if (early.modelScore > late.modelScore + 1.5) return Math.max(currentRamp, 10);
+  if (late.modelScore > middle.modelScore + 1.5) return Math.min(currentRamp, 6);
+  return currentRamp;
 }
 
 function developmentScore(value: string) {
@@ -729,8 +716,9 @@ async function runOptimizerThroughSeason(season: number) {
   const ratedGames: RatedGame[] = [];
   const coachRows = await loadCoachRows();
   const coachOptions = buildCoachInfluenceCandidates(currentConfig.coachInfluence);
-  let selectedResults: ReturnType<typeof optimizeWeights> = [];
   let selectedCoachInfluence = currentConfig.coachInfluence;
+  let selectedCoachGames: RatedGame[] = ratedGames;
+  let selectedCoachScore = Infinity;
 
   for (const s of [...new Set([2022, 2023, 2024, 2025, season])]) {
     if (s > season) continue;
@@ -744,20 +732,21 @@ async function runOptimizerThroughSeason(season: number) {
       currentConfig.coachInfluence,
       coachInfluence
     );
-    const candidateResults = optimizeWeights(adjustedGames);
-    if (!candidateResults.length) continue;
-    if (!selectedResults.length || candidateResults[0].finalScore < selectedResults[0].finalScore) {
-      selectedResults = candidateResults;
+    const score = evaluateRatedGames(adjustedGames, currentConfig.weights, currentConfig.calibration).summary.modelScore;
+    if (score < selectedCoachScore) {
+      selectedCoachScore = score;
+      selectedCoachGames = adjustedGames;
       selectedCoachInfluence = coachInfluence;
     }
   }
 
+  const selectedResults = optimizeWeights(selectedCoachGames);
   const bestCandidate = selectedResults[0];
   const selectedRampWeeks = bestCandidate
-    ? await optimizeRampWeeksForHoldout(
+    ? optimizeRampWeeksForHoldout(
       season,
       currentConfig.ratingFormula,
-      selectedCoachInfluence,
+      selectedCoachGames,
       bestCandidate.weights,
       bestCandidate.calibration
     )

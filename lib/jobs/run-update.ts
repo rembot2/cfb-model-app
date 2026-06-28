@@ -478,6 +478,8 @@ async function runBacktest(season: number, optimize = true) {
   const gameRows = evaluated.map(mapBacktestGameRow);
   const summaryRows = buildBacktestSummaryRows(season, evaluated);
 
+  await clearBacktestRows(supabase, season);
+
   if (gameRows.length) {
     await upsertRows(supabase, 'backtest_games', gameRows, 'season,week,home_team,away_team');
   }
@@ -990,6 +992,8 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
 
   if (error) throw error;
 
+  const fbsTeams = await loadFbsTeamSet();
+
   const weeklyRatings = options.dynamicRatings && activeConfig
     ? await buildWeeklyRatingMaps(
       season,
@@ -1000,6 +1004,7 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
     : null;
 
   return (games || [])
+    .filter((game) => fbsTeams.has(String(game.home_team)) && fbsTeams.has(String(game.away_team)))
     .map((game): RatedGame | null => {
       const ratings = weeklyRatings?.get(Number(game.week)) || storedRatings;
       if (!ratings) return null;
@@ -1019,6 +1024,22 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
       };
     })
     .filter((game): game is RatedGame => game !== null);
+}
+
+async function loadFbsTeamSet() {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from('teams')
+    .select('school')
+    .order('school', { ascending: true })
+    .limit(500);
+
+  if (error) throw error;
+  const teams = new Set((data || []).map((row) => String(row.school)));
+  if (!teams.size) {
+    throw new Error('No FBS teams are loaded. Run the teams update before running backtests.');
+  }
+  return teams;
 }
 
 async function buildWeeklyRatingMaps(
@@ -1350,6 +1371,24 @@ async function upsertRows(
     if (error) {
       throw new Error(`${table} upsert failed: ${errorMessage(error)}`);
     }
+  }
+}
+
+async function clearBacktestRows(supabase: ReturnType<typeof getServiceSupabase>, season: number) {
+  const gameDelete = await supabase
+    .from('backtest_games')
+    .delete()
+    .eq('season', season);
+  if (gameDelete.error) {
+    throw new Error(`backtest_games delete failed: ${errorMessage(gameDelete.error)}`);
+  }
+
+  const summaryDelete = await supabase
+    .from('backtest_summary')
+    .delete()
+    .eq('season', String(season));
+  if (summaryDelete.error) {
+    throw new Error(`backtest_summary delete failed: ${errorMessage(summaryDelete.error)}`);
   }
 }
 

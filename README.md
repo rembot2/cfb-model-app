@@ -67,7 +67,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 CFBD_API_KEY
 CRON_SECRET
+GITHUB_ACTIONS_TOKEN
 ```
+
+`GITHUB_ACTIONS_TOKEN` is only needed for the website's Run Full Refresh button. Create a fine-grained GitHub token for this repo with Actions read/write access, then add it to Vercel environment variables.
 
 5. Install dependencies:
 

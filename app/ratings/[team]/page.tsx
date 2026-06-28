@@ -71,9 +71,9 @@ export default async function TeamRatingPage({ params, searchParams }: TeamRatin
       <Link className="back-link" href={`/ratings?season=${season ?? ''}`}>Back to ratings</Link>
 
       <section className="rating-rings">
-        <RatingRing label="Composite" value={row.composite} />
-        <RatingRing label="Offense" value={row.off_rating} />
-        <RatingRing label="Defense" value={row.def_rating} />
+        <RatingRing label="Composite" value={row.composite} delta={row.composite_delta} />
+        <RatingRing label="Offense" value={row.off_rating} delta={row.off_rating_delta} />
+        <RatingRing label="Defense" value={row.def_rating} delta={row.def_rating_delta} />
       </section>
 
       <section className="detail-section">
@@ -138,7 +138,7 @@ function PositionRosterCard({
   );
 }
 
-function RatingRing({ label, value }: { label: string; value: unknown }) {
+function RatingRing({ label, value, delta }: { label: string; value: unknown; delta?: unknown }) {
   const n = numberValue(value);
   const pct = Math.max(0, Math.min(100, n));
   return (
@@ -146,9 +146,20 @@ function RatingRing({ label, value }: { label: string; value: unknown }) {
       <div className="rating-ring" style={{ '--rating-pct': `${pct}%` } as CSSProperties}>
         <div className="rating-ring-inner">{fmt(n)}</div>
       </div>
-      <div className="rating-ring-label">{label}</div>
+      <div className="rating-ring-label">
+        {label}
+        <RatingDeltaArrow delta={delta} />
+      </div>
     </div>
   );
+}
+
+function RatingDeltaArrow({ delta }: { delta: unknown }) {
+  const n = Number(delta);
+  const direction = Number.isFinite(n) && Math.abs(n) >= 0.01
+    ? n > 0 ? 'up' : 'down'
+    : '';
+  return direction ? <span className={`rating-change ${direction}`} title={`${direction === 'up' ? '+' : ''}${fmt(n)}`} /> : null;
 }
 
 function RatingCard({ label, value }: { label: string; value: unknown }) {

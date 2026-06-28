@@ -20,6 +20,9 @@ jobs:
     env:
       MODEL_URL: https://cfb-model-app.vercel.app/api/jobs/update
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
 
     steps:
       - name: Check configuration
@@ -29,6 +32,27 @@ jobs:
             echo "Missing the CRON_SECRET repository secret."
             exit 1
           fi
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+            echo "Missing the NEXT_PUBLIC_SUPABASE_URL repository secret."
+            exit 1
+          fi
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "Missing the SUPABASE_SERVICE_ROLE_KEY repository secret."
+            exit 1
+          fi
+          if [ -z "$CFBD_API_KEY" ]; then
+            echo "Missing the CFBD_API_KEY repository secret."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
 
       - name: Refresh 2026 source data
         shell: bash
@@ -73,13 +97,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Optimizing against all completed seasons"
-          curl --fail-with-body --silent --show-error --retry 2 --max-time 300 \
-            --request POST "$MODEL_URL" \
-            --header "Authorization: Bearer $CRON_SECRET" \
-            --header "Content-Type: application/json" \
-            --data '{"season":2026,"step":"backtest","optimizeBacktest":true}'
-          echo
+          echo "Running full optimizer against 2025 as the completed holdout season"
+          npm run job:full-optimizer -- --season=2025
 
           for season in 2022 2023 2024 2025; do
             echo "Rebuilding backtest for $season with active optimized weights"

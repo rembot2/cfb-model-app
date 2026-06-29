@@ -123,7 +123,6 @@ export function calculateTeamRatings(
   const maxSeason = Math.max(...seasons);
   const recency = options.recencyWeight ?? 2.5;
   const iterations = options.iterations ?? 20;
-  const talentWeight = options.talentWeight ?? 0.4;
   const coachMap = buildCoachMap(options.coaches || []);
   const coachInfluence = options.coachInfluence || DEFAULT_COACH_INFLUENCE;
   const seasonBaseWeight = new Map<number, number>();
@@ -158,13 +157,7 @@ export function calculateTeamRatings(
   const positionModel = options.rosterPlayers
     ? buildPositionGroupRatings(teams, options.rosterPlayers)
     : null;
-  const rawRows = teams.map((team, index) => {
-    const rawOffZ = (zPpaOff[index] + zSucOff[index] + zPpdOff[index]) / 3;
-    const rawDefZ = (zPpaDef[index] + zSucDef[index] + zPpdDef[index]) / 3;
-    const talent = talentZ[team] || 0;
-    const perfScore = ((rawOffZ + rawDefZ) / 2) * 15;
-    const compositeRaw = perfScore * (1 - talentWeight) + talent * 10 * talentWeight;
-
+  return teams.map((team, index) => {
     const positions = positionModel?.ratings[team];
     const coach = coachMap[team] || defaultCoachConfig();
     const coachYears = coach.hireYear > 0 ? season - coach.hireYear : 99;
@@ -186,103 +179,62 @@ export function calculateTeamRatings(
       options.talentRampWeeks ?? 8
     );
     const performanceSplit = 1 - positionTalentSplit;
-    const rushOffTalent = positions ? positions.RB * 0.45 + positions.OL * 0.55 : 10;
-    const passOffTalent = positions
-      ? positions.QB * 0.40 + positions.WR * 0.25 + positions.TE * 0.10 + positions.OL * 0.25
-      : 10;
-    const rushDefTalent = positions ? positions.DL * 0.55 + positions.LB * 0.45 : 10;
-    const passDefTalent = positions
-      ? positions.DL * 0.30 + positions.CB * 0.40 + positions.S * 0.30
-      : 10;
+    const positionRatings = positions ? scalePositionRatings(positions) : null;
+    const fallbackTalentRating = zToRating(talentZ[team] || 0);
+    const rushOffTalent = positionRatings
+      ? positionRatings.RB * 0.45 + positionRatings.OL * 0.55
+      : fallbackTalentRating;
+    const passOffTalent = positionRatings
+      ? positionRatings.QB * 0.40 + positionRatings.WR * 0.25 + positionRatings.TE * 0.10 + positionRatings.OL * 0.25
+      : fallbackTalentRating;
+    const rushDefTalent = positionRatings
+      ? positionRatings.DL * 0.55 + positionRatings.LB * 0.45
+      : fallbackTalentRating;
+    const passDefTalent = positionRatings
+      ? positionRatings.DL * 0.30 + positionRatings.CB * 0.40 + positionRatings.S * 0.30
+      : fallbackTalentRating;
 
-    const rushOffRaw = positions
-      ? ((rushOffTalent - 10) / 3) * 15 * positionTalentSplit + zRushOff[index] * performanceSplit * 15
-      : zRushOff[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
-    const passOffRaw = positions
-      ? ((passOffTalent - 10) / 3) * 15 * positionTalentSplit + zPassOff[index] * performanceSplit * 15
-      : zPassOff[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
-    const rushDefRaw = positions
-      ? ((rushDefTalent - 10) / 3) * 15 * positionTalentSplit + zRushDef[index] * performanceSplit * 15
-      : zRushDef[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
-    const passDefRaw = positions
-      ? ((passDefTalent - 10) / 3) * 15 * positionTalentSplit + zPassDef[index] * performanceSplit * 15
-      : zPassDef[index] * 15 * (1 - talentWeight) + talent * 10 * talentWeight;
+    const rushOffBase = blendRatings(rushOffTalent, zToRating(zRushOff[index]), positionTalentSplit, performanceSplit);
+    const passOffBase = blendRatings(passOffTalent, zToRating(zPassOff[index]), positionTalentSplit, performanceSplit);
+    const rushDefBase = blendRatings(rushDefTalent, zToRating(zRushDef[index]), positionTalentSplit, performanceSplit);
+    const passDefBase = blendRatings(passDefTalent, zToRating(zPassDef[index]), positionTalentSplit, performanceSplit);
+
+    const coachActive = isCoachActiveForSeason(coach, season);
+    const offenseCoachBoost = coachActive ? coachScaleBoost(coach.offenseRating, coachInfluence.offenseBoost) : 0;
+    const defenseCoachBoost = coachActive ? coachScaleBoost(coach.defenseRating, coachInfluence.defenseBoost) : 0;
+    const developmentBoost = coachActive ? DEVELOPMENT_SCORE[coach.developmentRating] * coachInfluence.developmentBoost : 0;
+    const rushOff = clampRating(rushOffBase + offenseCoachBoost);
+    const passOff = clampRating(passOffBase + offenseCoachBoost);
+    const rushDef = clampRating(rushDefBase + defenseCoachBoost);
+    const passDef = clampRating(passDefBase + defenseCoachBoost);
+    const offRating = round2((rushOff + passOff) / 2);
+    const defRating = round2((rushDef + passDef) / 2);
+    const composite = clampRating(round2((offRating + defRating) / 2 + developmentBoost));
 
     return {
       team,
-      games: rawRatings[team].games,
-      passRate: rawRatings[team].passRate,
-      offRaw: (rushOffRaw + passOffRaw) / 2,
-      defRaw: (rushDefRaw + passDefRaw) / 2,
-      compositeRaw,
-      rushOffRaw,
-      passOffRaw,
-      rushDefRaw,
-      passDefRaw,
-      coach,
-      positionRatings: positions,
-      exactQbRating: positionModel?.topQb[team]
+      composite,
+      offRating,
+      defRating,
+      rushOff,
+      passOff,
+      rushDef,
+      passDef,
+      qbRating: positionRatings?.QB ?? null,
+      rbRating: positionRatings?.RB ?? null,
+      wrRating: positionRatings?.WR ?? null,
+      teRating: positionRatings?.TE ?? null,
+      olRating: positionRatings?.OL ?? null,
+      dlRating: positionRatings?.DL ?? null,
+      lbRating: positionRatings?.LB ?? null,
+      cbRating: positionRatings?.CB ?? null,
+      sRating: positionRatings?.S ?? null,
+      kRating: positionRatings?.K ?? null,
+      pRating: positionRatings?.P ?? null,
+      passRate: round2(rawRatings[team].passRate),
+      games: rawRatings[team].games
     };
-  });
-
-  const displayRows = rawRows.map((row) => {
-    const rushOffDisplay = 10 + row.rushOffRaw / 3;
-    const passOffDisplay = 10 + row.passOffRaw / 3;
-    const rushDefDisplay = 10 + row.rushDefRaw / 3;
-    const passDefDisplay = 10 + row.passDefRaw / 3;
-    const offDisplay = (rushOffDisplay + passOffDisplay) / 2;
-    const defDisplay = (rushDefDisplay + passDefDisplay) / 2;
-
-    return {
-      ...row,
-      rushOffDisplay,
-      passOffDisplay,
-      rushDefDisplay,
-      passDefDisplay,
-      compositeDisplay: (offDisplay + defDisplay) / 2
-    };
-  });
-
-  const maxCompositeRaw = Math.max(...displayRows.map((row) => row.compositeDisplay), 10.1);
-
-  return displayRows
-    .map((row) => {
-      const coachActive = isCoachActiveForSeason(row.coach, season);
-      const offenseCoachBoost = coachActive ? coachScaleBoost(row.coach.offenseRating, coachInfluence.offenseBoost) : 0;
-      const defenseCoachBoost = coachActive ? coachScaleBoost(row.coach.defenseRating, coachInfluence.defenseBoost) : 0;
-      const developmentBoost = coachActive ? DEVELOPMENT_SCORE[row.coach.developmentRating] * coachInfluence.developmentBoost : 0;
-      const rushOff = clampRating(scaleRating(row.rushOffDisplay, maxCompositeRaw) + offenseCoachBoost);
-      const passOff = clampRating(scaleRating(row.passOffDisplay, maxCompositeRaw) + offenseCoachBoost);
-      const rushDef = clampRating(scaleRating(row.rushDefDisplay, maxCompositeRaw) + defenseCoachBoost);
-      const passDef = clampRating(scaleRating(row.passDefDisplay, maxCompositeRaw) + defenseCoachBoost);
-      const offRating = round2((rushOff + passOff) / 2);
-      const defRating = round2((rushDef + passDef) / 2);
-      const composite = clampRating(round2((offRating + defRating) / 2 + developmentBoost));
-
-      return {
-        team: row.team,
-        composite,
-        offRating,
-        defRating,
-        rushOff,
-        passOff,
-        rushDef,
-        passDef,
-        qbRating: row.exactQbRating ?? row.positionRatings?.QB ?? null,
-        rbRating: row.positionRatings ? scaleRating(row.positionRatings.RB, maxCompositeRaw) : null,
-        wrRating: row.positionRatings ? scaleRating(row.positionRatings.WR, maxCompositeRaw) : null,
-        teRating: row.positionRatings ? scaleRating(row.positionRatings.TE, maxCompositeRaw) : null,
-        olRating: row.positionRatings ? scaleRating(row.positionRatings.OL, maxCompositeRaw) : null,
-        dlRating: row.positionRatings ? scaleRating(row.positionRatings.DL, maxCompositeRaw) : null,
-        lbRating: row.positionRatings ? scaleRating(row.positionRatings.LB, maxCompositeRaw) : null,
-        cbRating: row.positionRatings ? scaleRating(row.positionRatings.CB, maxCompositeRaw) : null,
-        sRating: row.positionRatings ? scaleRating(row.positionRatings.S, maxCompositeRaw) : null,
-        kRating: row.positionRatings ? scaleRating(row.positionRatings.K, maxCompositeRaw) : null,
-        pRating: row.positionRatings ? scaleRating(row.positionRatings.P, maxCompositeRaw) : null,
-        passRate: round2(row.passRate),
-        games: row.games
-      };
-    })
+  })
     .sort((a, b) => b.composite - a.composite);
 }
 
@@ -652,6 +604,24 @@ function stdDev(values: Array<number | null | undefined>) {
 function scaleRating(value: number, maxCompositeRaw: number) {
   const slope = maxCompositeRaw !== 10 ? 20 / (maxCompositeRaw - 10) : 2.5;
   return round2(75 + (value - 10) * slope);
+}
+
+function scalePositionRatings(positions: PositionRatings): PositionRatings {
+  return Object.fromEntries(
+    POSITION_GROUPS.map((group) => [group, tenScaleToRating(positions[group])])
+  ) as PositionRatings;
+}
+
+function tenScaleToRating(value: number) {
+  return clampRating(75 + (value - 10) * 5);
+}
+
+function zToRating(value: number) {
+  return tenScaleToRating(10 + value * 3);
+}
+
+function blendRatings(talentRating: number, performanceRating: number, talentSplit: number, performanceSplit: number) {
+  return round2(talentRating * talentSplit + performanceRating * performanceSplit);
 }
 
 function normalizeRate(value: unknown) {

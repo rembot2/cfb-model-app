@@ -73,6 +73,7 @@ const DEVELOPMENT_SCORE: Record<DevelopmentRating, number> = {
   Poor: -1,
   Terrible: -2
 };
+const FINAL_RATING_SCALE = 0.98;
 
 export type RatingOptions = {
   season: number;
@@ -203,13 +204,13 @@ export function calculateTeamRatings(
     const offenseCoachBoost = coachActive ? coachScaleBoost(coach.offenseRating, coachInfluence.offenseBoost) : 0;
     const defenseCoachBoost = coachActive ? coachScaleBoost(coach.defenseRating, coachInfluence.defenseBoost) : 0;
     const developmentBoost = coachActive ? DEVELOPMENT_SCORE[coach.developmentRating] * coachInfluence.developmentBoost : 0;
-    const rushOff = clampRating(rushOffBase + offenseCoachBoost);
-    const passOff = clampRating(passOffBase + offenseCoachBoost);
-    const rushDef = clampRating(rushDefBase + defenseCoachBoost);
-    const passDef = clampRating(passDefBase + defenseCoachBoost);
+    const rushOff = scaleFinalRating(rushOffBase + offenseCoachBoost);
+    const passOff = scaleFinalRating(passOffBase + offenseCoachBoost);
+    const rushDef = scaleFinalRating(rushDefBase + defenseCoachBoost);
+    const passDef = scaleFinalRating(passDefBase + defenseCoachBoost);
     const offRating = round2((rushOff + passOff) / 2);
     const defRating = round2((rushDef + passDef) / 2);
-    const composite = clampRating(round2((offRating + defRating) / 2 + developmentBoost));
+    const composite = scaleFinalRating((offRating + defRating) / 2 + developmentBoost);
 
     return {
       team,
@@ -358,6 +359,10 @@ function coachScaleBoost(rating: number, multiplier: number) {
 
 function clampRating(value: number) {
   return round2(clamp(value, 0, 100));
+}
+
+function scaleFinalRating(value: number) {
+  return clampRating(value * FINAL_RATING_SCALE);
 }
 
 function buildRawOpponentBaseline(
@@ -613,7 +618,7 @@ function scalePositionRatings(positions: PositionRatings): PositionRatings {
 }
 
 function tenScaleToRating(value: number) {
-  return clampRating(75 + (value - 10) * 5);
+  return scaleFinalRating(75 + (value - 10) * 5);
 }
 
 function zToRating(value: number) {

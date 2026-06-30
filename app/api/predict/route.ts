@@ -100,7 +100,7 @@ function mapRating(row: Record<string, unknown>): Rating {
     passOff: numberOrDefault(row.pass_off_rating, numberOrDefault(row.off_rating, 75)),
     rushDef: numberOrDefault(row.rush_def_rating, numberOrDefault(row.def_rating, 75)),
     passDef: numberOrDefault(row.pass_def_rating, numberOrDefault(row.def_rating, 75)),
-    passRate: numberOrDefault(row.pass_rate, 0.5),
+    passRate: numberOrDefault(row.pass_rate, numberOrDefault(row.passRate, 0.5)),
     games: numberOrDefault(row.games, 0)
   };
 }

@@ -192,6 +192,7 @@ create table if not exists public.ratings (
   s_rating numeric,
   k_rating numeric,
   p_rating numeric,
+  pass_rate numeric,
   source text default 'app',
   synced_at timestamptz not null default now(),
   unique (season, team)

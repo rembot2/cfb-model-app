@@ -235,6 +235,38 @@ export async function fetchRatingTeam(requestedSeason: number | undefined, teamN
   };
 }
 
+export async function fetchPredictorData() {
+  const supabase = getPublicSupabase();
+  const { data, error } = await supabase
+    .from('ratings')
+    .select('season,team,composite')
+    .order('season', { ascending: false })
+    .order('composite', { ascending: false })
+    .limit(2000);
+
+  if (error) throw new Error(error.message);
+
+  const seasons = [...new Set(
+    (data ?? [])
+      .map(row => Number(row.season))
+      .filter(Number.isFinite)
+  )].sort((a, b) => b - a);
+  const teamsBySeason = Object.fromEntries(
+    seasons.map(season => [
+      String(season),
+      (data ?? [])
+        .filter(row => Number(row.season) === season)
+        .map(row => String(row.team))
+    ])
+  );
+
+  return {
+    seasons,
+    selectedSeason: seasons[0] ?? null,
+    teamsBySeason
+  };
+}
+
 export async function fetchRosterForTeam(season: number, team: string) {
   const supabase = getPublicSupabase();
   const { data, error } = await supabase

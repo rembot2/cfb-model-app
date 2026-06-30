@@ -10,6 +10,7 @@ export const metadata = {
 const nav = [
   ['Dashboard', '/'],
   ['Ratings', '/ratings'],
+  ['Predict', '/predict'],
   ['Formula', '/formula'],
   ['Coaches', '/coaches'],
   ['Games', '/games'],

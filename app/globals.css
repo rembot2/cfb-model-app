@@ -260,6 +260,161 @@ button:disabled {
   margin: 10px 0 0;
 }
 
+.predictor-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.predictor-controls label,
+.predictor-grid label {
+  color: var(--muted);
+  display: grid;
+  font-size: 11px;
+  font-weight: 900;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.predictor-grid {
+  display: grid;
+  grid-template-columns: 120px repeat(2, minmax(190px, 1fr)) minmax(170px, 0.7fr);
+  gap: 12px;
+}
+
+.predictor-grid select {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 800;
+  padding: 8px 10px;
+  text-transform: none;
+}
+
+.predictor-actions {
+  margin-top: 14px;
+}
+
+.status-text {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.predictor-empty {
+  color: var(--muted);
+  min-height: 180px;
+}
+
+.predictor-empty p {
+  line-height: 1.55;
+  margin: 8px 0 0;
+}
+
+.predictor-kpis .card strong {
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.predictor-detail-grid {
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr) minmax(220px, 0.8fr);
+  margin-top: 14px;
+}
+
+.edge-row {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+}
+
+.edge-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.edge-meta span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.edge-meta strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.edge-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf2f7;
+}
+
+.edge-fill {
+  height: 100%;
+  border-radius: inherit;
+}
+
+.edge-fill.positive {
+  background: var(--green);
+}
+
+.edge-fill.negative {
+  background: var(--red);
+}
+
+.rating-compare {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 7px;
+  padding: 12px 0;
+}
+
+.rating-compare:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.rating-compare div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rating-compare span,
+.rating-compare small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.formula-mini {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.formula-mini div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #edf1f5;
+  padding-bottom: 7px;
+}
+
+.formula-mini dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.formula-mini dd {
+  margin: 0;
+  font-weight: 900;
+}
+
 .formula-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr));

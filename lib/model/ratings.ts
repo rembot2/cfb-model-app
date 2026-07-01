@@ -195,10 +195,39 @@ export function calculateTeamRatings(
       ? positionRatings.DL * 0.30 + positionRatings.CB * 0.40 + positionRatings.S * 0.30
       : fallbackTalentRating;
 
-    const rushOffBase = blendRatings(rushOffTalent, zToRating(zRushOff[index]), positionTalentSplit, performanceSplit);
-    const passOffBase = blendRatings(passOffTalent, zToRating(zPassOff[index]), positionTalentSplit, performanceSplit);
-    const rushDefBase = blendRatings(rushDefTalent, zToRating(zRushDef[index]), positionTalentSplit, performanceSplit);
-    const passDefBase = blendRatings(passDefTalent, zToRating(zPassDef[index]), positionTalentSplit, performanceSplit);
+    const hasPositionTalent = Boolean(positionRatings);
+    const rushOffBase = blendTalentWithPerformance(
+      rushOffTalent,
+      zToRating(zRushOff[index]),
+      performanceSplit,
+      hasPositionTalent,
+      season,
+      ratingWeek
+    );
+    const passOffBase = blendTalentWithPerformance(
+      passOffTalent,
+      zToRating(zPassOff[index]),
+      performanceSplit,
+      hasPositionTalent,
+      season,
+      ratingWeek
+    );
+    const rushDefBase = blendTalentWithPerformance(
+      rushDefTalent,
+      zToRating(zRushDef[index]),
+      performanceSplit,
+      hasPositionTalent,
+      season,
+      ratingWeek
+    );
+    const passDefBase = blendTalentWithPerformance(
+      passDefTalent,
+      zToRating(zPassDef[index]),
+      performanceSplit,
+      hasPositionTalent,
+      season,
+      ratingWeek
+    );
 
     const coachActive = isCoachActiveForSeason(coach, season);
     const offenseCoachBoost = coachActive ? coachScaleBoost(coach.offenseRating, coachInfluence.offenseBoost) : 0;
@@ -599,8 +628,27 @@ function zToRating(value: number) {
   return tenScaleToRating(10 + value * 3);
 }
 
-function blendRatings(talentRating: number, performanceRating: number, talentSplit: number, performanceSplit: number) {
-  return round2(talentRating * talentSplit + performanceRating * performanceSplit);
+function blendTalentWithPerformance(
+  talentRating: number,
+  performanceRating: number,
+  performanceSplit: number,
+  hasPositionTalent: boolean,
+  season: number,
+  ratingWeek: number
+) {
+  if (!hasPositionTalent) {
+    const talentSplit = 1 - performanceSplit;
+    return round2(talentRating * talentSplit + performanceRating * performanceSplit);
+  }
+
+  const rawAdjustment = (performanceRating - talentRating) * performanceSplit;
+  const adjustmentCap = getPerformanceAdjustmentCap(season, ratingWeek, performanceSplit);
+  return round2(talentRating + clamp(rawAdjustment, -adjustmentCap, adjustmentCap));
+}
+
+function getPerformanceAdjustmentCap(season: number, ratingWeek: number, performanceSplit: number) {
+  if (season >= 2026 && ratingWeek <= 0) return 2.5;
+  return Math.max(2.5, 10 * clamp(performanceSplit, 0, 1));
 }
 
 function normalizeRate(value: unknown) {

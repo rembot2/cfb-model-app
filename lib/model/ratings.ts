@@ -179,7 +179,8 @@ export function calculateTeamRatings(
       targetTalentSplit,
       options.talentRampWeeks ?? 8
     );
-    const performanceSplit = 1 - positionTalentSplit;
+    const isPreseasonProjection = season >= 2026 && ratingWeek <= 0;
+    const performanceSplit = isPreseasonProjection ? 0 : 1 - positionTalentSplit;
     const positionRatings = positions || null;
     const fallbackTalentRating = zToRating(talentZ[team] || 0);
     const rushOffTalent = positionRatings
@@ -237,7 +238,10 @@ export function calculateTeamRatings(
     const passOff = scaleFinalRating(passOffBase + offenseCoachBoost);
     const rushDef = scaleFinalRating(rushDefBase + defenseCoachBoost);
     const passDef = scaleFinalRating(passDefBase + defenseCoachBoost);
-    const offRating = round2((rushOff + passOff) / 2);
+    const schemePassRate = normalizeRate(rawRatings[team].passRate);
+    const offRating = isPreseasonProjection
+      ? round2(rushOff * (1 - schemePassRate) + passOff * schemePassRate)
+      : round2((rushOff + passOff) / 2);
     const defRating = round2((rushDef + passDef) / 2);
     const composite = scaleFinalRating((offRating + defRating) / 2 + developmentBoost);
 
@@ -261,7 +265,7 @@ export function calculateTeamRatings(
       sRating: positionRatings?.S ?? null,
       kRating: positionRatings?.K ?? null,
       pRating: positionRatings?.P ?? null,
-      passRate: round2(rawRatings[team].passRate),
+      passRate: round2(schemePassRate),
       games: rawRatings[team].games
     };
   })

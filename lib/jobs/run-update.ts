@@ -375,6 +375,7 @@ async function calculateRatings(season: number) {
     s_rating: rating.sRating,
     k_rating: rating.kRating,
     p_rating: rating.pRating,
+    pass_rate: rating.passRate,
     source: 'app',
     synced_at: new Date().toISOString()
   }));
@@ -1211,7 +1212,7 @@ async function loadRatings(season: number) {
         sRating: numberOrNull(row.s_rating),
         kRating: numberOrNull(row.k_rating),
         pRating: numberOrNull(row.p_rating),
-        passRate: 0.5,
+        passRate: numberOrNull(row.pass_rate) ?? 0.5,
         games: numberOrNull(row.games)
       } satisfies Rating
     ])

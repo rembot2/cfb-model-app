@@ -38,18 +38,18 @@ type PositionGroup = 'QB' | 'RB' | 'WR' | 'TE' | 'OL' | 'DL' | 'LB' | 'CB' | 'S'
 type PositionRatings = Record<PositionGroup, number>;
 
 const POSITION_GROUPS: PositionGroup[] = ['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'CB', 'S', 'K', 'P'];
-const POSITION_DEPTH_LIMITS: Record<PositionGroup, number> = {
-  QB: 1,
-  RB: 3,
-  WR: 5,
-  TE: 3,
-  OL: 7,
-  DL: 6,
-  LB: 5,
-  CB: 4,
-  S: 3,
-  K: 1,
-  P: 1
+const POSITION_DEPTH_WEIGHTS: Record<PositionGroup, number[]> = {
+  QB: [1],
+  RB: [0.55, 0.35, 0.10],
+  WR: [0.30, 0.25, 0.20, 0.15, 0.10],
+  TE: [0.45, 0.40, 0.15],
+  OL: [0.16, 0.15, 0.14, 0.13, 0.12, 0.10, 0.10, 0.10],
+  DL: [0.22, 0.20, 0.18, 0.16, 0.12, 0.12],
+  LB: [0.28, 0.24, 0.20, 0.14, 0.14],
+  CB: [0.28, 0.24, 0.20, 0.14, 0.14],
+  S: [0.45, 0.40, 0.15],
+  K: [1],
+  P: [1]
 };
 
 type DevelopmentRating = 'Elite' | 'Good' | 'Average' | 'Poor' | 'Terrible';
@@ -180,7 +180,7 @@ export function calculateTeamRatings(
       options.talentRampWeeks ?? 8
     );
     const performanceSplit = 1 - positionTalentSplit;
-    const positionRatings = positions ? scalePositionRatings(positions) : null;
+    const positionRatings = positions || null;
     const fallbackTalentRating = zToRating(talentZ[team] || 0);
     const rushOffTalent = positionRatings
       ? positionRatings.RB * 0.45 + positionRatings.OL * 0.55
@@ -241,7 +241,6 @@ export function calculateTeamRatings(
 
 function buildPositionGroupRatings(teams: string[], players: RawRosterPlayer[]) {
   const grouped: Record<string, Partial<Record<PositionGroup, number[]>>> = {};
-  const topQb: Record<string, number> = {};
 
   for (const player of players) {
     const group = normalizePositionGroup(player.position);
@@ -251,45 +250,31 @@ function buildPositionGroupRatings(teams: string[], players: RawRosterPlayer[]) 
     grouped[player.team] ||= {};
     grouped[player.team][group] ||= [];
     grouped[player.team][group]!.push(rating);
-    if (group === 'QB' && (topQb[player.team] === undefined || rating > topQb[player.team])) {
-      topQb[player.team] = rating;
-    }
-  }
-
-  const raw: Record<string, Partial<Record<PositionGroup, number>>> = {};
-  for (const team of teams) {
-    raw[team] = {};
-    for (const group of POSITION_GROUPS) {
-      const values = [...(grouped[team]?.[group] || [])]
-        .sort((a, b) => b - a)
-        .slice(0, POSITION_DEPTH_LIMITS[group]);
-      if (!values.length) continue;
-
-      let weightedSum = 0;
-      let weightSum = 0;
-      for (let index = 0; index < values.length; index++) {
-        const weight = Math.exp(-0.35 * index);
-        weightedSum += values[index] * weight;
-        weightSum += weight;
-      }
-      raw[team][group] = weightedSum / weightSum;
-    }
   }
 
   const ratings = Object.fromEntries(teams.map((team) => [team, {}])) as Record<string, PositionRatings>;
-  for (const group of POSITION_GROUPS) {
-    const values = teams.map((team) => raw[team][group]).filter((value): value is number => Number.isFinite(value));
-    const groupMean = mean(values);
-    const groupStd = stdDev(values) || 1;
-    for (const team of teams) {
-      const value = raw[team][group];
-      ratings[team][group] = value !== undefined
-        ? round2(10 + ((value - groupMean) / groupStd) * 3)
-        : 10;
+  for (const team of teams) {
+    for (const group of POSITION_GROUPS) {
+      const weights = POSITION_DEPTH_WEIGHTS[group];
+      const values = [...(grouped[team]?.[group] || [])]
+        .sort((a, b) => b - a)
+        .slice(0, weights.length);
+      ratings[team][group] = values.length ? weightedDepthRating(values, weights) : 75;
     }
   }
 
-  return { ratings, topQb };
+  return { ratings };
+}
+
+function weightedDepthRating(values: number[], weights: number[]) {
+  let weightedSum = 0;
+  let weightSum = 0;
+  for (let index = 0; index < values.length; index++) {
+    const weight = weights[index] ?? 0;
+    weightedSum += values[index] * weight;
+    weightSum += weight;
+  }
+  return round2(weightSum > 0 ? weightedSum / weightSum : values[0]);
 }
 
 function calculateTalentSplitForWeek(week: number, earlyTalentSplit: number, targetTalentSplit: number, rampWeeks: number) {
@@ -604,17 +589,6 @@ function stdDev(values: Array<number | null | undefined>) {
   if (finite.length < 2) return 1;
   const m = mean(finite);
   return Math.sqrt(finite.reduce((sum, value) => sum + Math.pow(value - m, 2), 0) / finite.length);
-}
-
-function scaleRating(value: number, maxCompositeRaw: number) {
-  const slope = maxCompositeRaw !== 10 ? 20 / (maxCompositeRaw - 10) : 2.5;
-  return round2(75 + (value - 10) * slope);
-}
-
-function scalePositionRatings(positions: PositionRatings): PositionRatings {
-  return Object.fromEntries(
-    POSITION_GROUPS.map((group) => [group, tenScaleToRating(positions[group])])
-  ) as PositionRatings;
 }
 
 function tenScaleToRating(value: number) {

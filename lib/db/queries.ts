@@ -126,13 +126,17 @@ async function fetchAllBacktestGames() {
 }
 
 export function buildWeeklyBacktestSummary(rows: Record<string, unknown>[], season: number | null): BacktestWeekSummary[] {
-  const weeks = [...new Set(rows.map(row => Number(row.week)).filter(Number.isFinite))]
-    .sort((a, b) => a - b);
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows.slice().sort((a, b) => Number(a.week) - Number(b.week))) {
+    const label = String(row.week_label || row.week || '');
+    if (!label) continue;
+    groups.set(label, [...(groups.get(label) || []), row]);
+  }
 
-  return weeks.map(week => ({
+  return [...groups.entries()].map(([week, weekRows]) => ({
     season: season ?? 0,
     week,
-    ...summarizeBacktestGames(rows.filter(row => Number(row.week) === week))
+    ...summarizeBacktestGames(weekRows)
   }));
 }
 

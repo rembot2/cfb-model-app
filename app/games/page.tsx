@@ -19,7 +19,7 @@ export default async function GamesPage() {
         rows={rows}
         columns={[
           { label: 'Season', className: 'num', render: row => String(row.season ?? '') },
-          { label: 'Week', className: 'num', render: row => String(row.week ?? '') },
+          { label: 'Week', className: 'num', render: row => String(row.week_label ?? row.week ?? '') },
           { label: 'Home', render: row => String(row.home_team ?? '') },
           { label: 'Away', render: row => String(row.away_team ?? '') },
           { label: 'Vegas', render: row => String(row.vegas_spread ?? '') },

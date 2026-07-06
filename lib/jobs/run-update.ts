@@ -432,7 +432,7 @@ async function generatePredictions(season: number) {
 
   if (error) throw error;
 
-  const rows = (games || [])
+  const rows = dedupeRowsByConflictKey((games || [])
     .map((game) => {
       const home = ratings.get(String(game.home_team));
       const away = ratings.get(String(game.away_team));
@@ -469,7 +469,7 @@ async function generatePredictions(season: number) {
         updated_at: new Date().toISOString()
       };
     })
-    .filter((row): row is NonNullable<typeof row> => row !== null);
+    .filter((row): row is NonNullable<typeof row> => row !== null), ['season', 'week', 'home_team', 'away_team']);
 
   if (rows.length) {
     await upsertRows(supabase, 'predictions', rows, 'season,week,home_team,away_team');
@@ -495,8 +495,9 @@ async function runBacktest(season: number, optimize = true) {
     coachInfluence: activeConfig.coachInfluence
   });
   const evaluated = evaluateRatedGames(games, config.weights, config.calibration).games;
-  const gameRows = evaluated.map(mapBacktestGameRow);
-  const summaryRows = buildBacktestSummaryRows(season, evaluated);
+  const rawGameRows = evaluated.map(mapBacktestGameRow);
+  const gameRows = dedupeRowsByConflictKey(rawGameRows, ['season', 'week', 'home_team', 'away_team']);
+  const summaryRows = dedupeRowsByConflictKey(buildBacktestSummaryRows(season, evaluated), ['season', 'week']);
 
   await clearBacktestRows(supabase, season);
 
@@ -512,6 +513,7 @@ async function runBacktest(season: number, optimize = true) {
     season,
     status: 'success',
     games: gameRows.length,
+    duplicatesDropped: rawGameRows.length - gameRows.length,
     summary: summaryRows.length,
     optimizedThrough: optimizationSeason,
     weightsUsed: config.weights,
@@ -1461,6 +1463,17 @@ async function upsertRows(
       throw new Error(`${table} upsert failed: ${errorMessage(error)}`);
     }
   }
+}
+
+function dedupeRowsByConflictKey<T extends Record<string, unknown>>(rows: T[], keyFields: string[]) {
+  const byKey = new Map<string, T>();
+  for (const row of rows) {
+    const key = keyFields
+      .map((field) => String(row[field] ?? '').trim().toLowerCase())
+      .join('|');
+    byKey.set(key, row);
+  }
+  return Array.from(byKey.values());
 }
 
 async function clearBacktestRows(supabase: ReturnType<typeof getServiceSupabase>, season: number) {

@@ -21,7 +21,7 @@ export default async function BacktestResultsPage({ searchParams }: { searchPara
       <Table
         rows={data.games}
         columns={[
-          { label: 'Week', className: 'num', render: row => String(row.week ?? '') },
+          { label: 'Week', className: 'num', render: row => String(row.week_label ?? row.week ?? '') },
           { label: 'Away', render: row => String(row.away_team ?? '') },
           { label: 'Home', render: row => String(row.home_team ?? '') },
           { label: 'Vegas Spread', render: row => String(row.vegas_spread ?? '') },

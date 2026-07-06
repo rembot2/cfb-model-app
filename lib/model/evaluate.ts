@@ -11,6 +11,8 @@ import type { ModelCalibration, ModelWeights, Rating } from './types';
 export type RatedGame = {
   season: number;
   week: number;
+  displayWeek?: string | null;
+  seasonType?: string | null;
   homeTeam: string;
   awayTeam: string;
   home: Rating;
@@ -180,4 +182,3 @@ function emptySummary(): EvaluationSummary {
     modelScore: 0
   };
 }
-

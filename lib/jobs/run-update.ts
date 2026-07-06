@@ -197,9 +197,10 @@ async function fetchGames(season: number) {
   const supabase = getServiceSupabase();
   const cfbd = new CfbdClient();
   const games = await cfbd.getSeasonGamesAndPostseason(season);
+  const maxRegularWeek = getMaxRegularWeek(games);
   const rows = games
     .filter((game) => game.homeTeam && game.awayTeam)
-    .map(mapGameRow);
+    .map((game) => mapGameRow(game, maxRegularWeek));
 
   await upsertRows(supabase, 'games', rows, 'cfbd_game_id');
   return { season, status: 'success', count: rows.length };
@@ -217,11 +218,12 @@ async function fetchTeamGameStats(season: number) {
   const supabase = getServiceSupabase();
   const cfbd = new CfbdClient();
   const games = await cfbd.getSeasonGamesAndPostseason(season);
+  const maxRegularWeek = getMaxRegularWeek(games);
   const rows: ReturnType<typeof mapTeamGameStatRow>[] = [];
 
   for (const seasonType of ['regular', 'postseason'] as const) {
     const stats = await cfbd.getAdvancedGameStats(season, seasonType);
-    rows.push(...stats.map((stat) => mapTeamGameStatRow(stat, games, season)));
+    rows.push(...stats.map((stat) => mapTeamGameStatRow(stat, games, season, seasonType, maxRegularWeek)));
   }
 
   const validRows = rows.filter(row => row.season && row.week && row.team && row.opponent);
@@ -294,6 +296,7 @@ async function calculateRatings(season: number) {
       .lte('season', season)
       .order('season', { ascending: true })
       .order('team', { ascending: true })
+      .order('model_week', { ascending: true, nullsFirst: false })
       .order('week', { ascending: true })
       .range(from, from + pageSize - 1);
 
@@ -436,7 +439,7 @@ async function generatePredictions(season: number) {
       if (!home || !away) return null;
 
       const prediction = predictGame(home, away, config.weights, config.calibration);
-      const vegasHomeSpread = lineMap.get(makeLineKey(game.season, game.week, game.home_team, game.away_team)) ?? null;
+      const vegasHomeSpread = lineMap.get(makeLineKey(game.season, game.season_type, game.week, game.home_team, game.away_team)) ?? null;
       const modelVegasDiff = vegasHomeSpread === null
         ? null
         : Math.abs(prediction.modelSpreadLine - vegasHomeSpread);
@@ -485,7 +488,12 @@ async function runBacktest(season: number, optimize = true) {
   const config = optimizerRows.best
     ? { weights: optimizerRows.best.weights, calibration: optimizerRows.best.calibration }
     : await loadActiveModelConfig();
-  const games = await buildRatedGamesForSeason(season);
+  const activeConfig = await loadActiveModelConfig();
+  const games = await buildRatedGamesForSeason(season, {
+    dynamicRatings: true,
+    ratingFormula: activeConfig.ratingFormula,
+    coachInfluence: activeConfig.coachInfluence
+  });
   const evaluated = evaluateRatedGames(games, config.weights, config.calibration).games;
   const gameRows = evaluated.map(mapBacktestGameRow);
   const summaryRows = buildBacktestSummaryRows(season, evaluated);
@@ -512,12 +520,14 @@ async function runBacktest(season: number, optimize = true) {
   };
 }
 
-function mapGameRow(game: CfbdGame) {
+function mapGameRow(game: CfbdGame, maxRegularWeek: number) {
+  const seasonType = normalizeSeasonType(game.seasonType);
   return {
     cfbd_game_id: game.id,
     season: game.season,
     week: game.week,
-    season_type: game.seasonType || 'regular',
+    model_week: getModelWeek(seasonType, game.week, maxRegularWeek),
+    season_type: seasonType,
     home_team: game.homeTeam,
     away_team: game.awayTeam,
     home_points: game.homePoints ?? null,
@@ -529,12 +539,22 @@ function mapGameRow(game: CfbdGame) {
   };
 }
 
-function mapTeamGameStatRow(stat: CfbdTeamGameStat, games: CfbdGame[], requestedSeason: number) {
+function mapTeamGameStatRow(
+  stat: CfbdTeamGameStat,
+  games: CfbdGame[],
+  requestedSeason: number,
+  requestedSeasonType: 'regular' | 'postseason',
+  maxRegularWeek: number
+) {
   const matchingGame = games.find((game) => game.id === stat.gameId);
+  const seasonType = normalizeSeasonType(stat.seasonType || matchingGame?.seasonType || requestedSeasonType);
+  const week = stat.week ?? matchingGame?.week ?? null;
   return {
     cfbd_game_id: stat.gameId ?? matchingGame?.id ?? null,
     season: stat.season ?? matchingGame?.season ?? requestedSeason,
-    week: stat.week ?? matchingGame?.week ?? null,
+    week,
+    model_week: week === null ? null : getModelWeek(seasonType, week, maxRegularWeek),
+    season_type: seasonType,
     team: stat.team,
     opponent: stat.opponent,
     is_home: matchingGame ? matchingGame.homeTeam === stat.team : null,
@@ -557,6 +577,28 @@ function mapTeamGameStatRow(stat: CfbdTeamGameStat, games: CfbdGame[], requested
 
 function uniqueWeeks(games: CfbdGame[]) {
   return [...new Set(games.map((game) => game.week).filter((week) => Number.isFinite(week)))].sort((a, b) => a - b);
+}
+
+function getMaxRegularWeek(games: CfbdGame[]) {
+  const weeks = games
+    .filter((game) => normalizeSeasonType(game.seasonType) === 'regular')
+    .map((game) => Number(game.week))
+    .filter(Number.isFinite);
+  return weeks.length ? Math.max(...weeks) : 15;
+}
+
+function normalizeSeasonType(value: unknown) {
+  return String(value || 'regular').toLowerCase() === 'postseason' ? 'postseason' : 'regular';
+}
+
+function getModelWeek(seasonType: string, week: unknown, maxRegularWeek: number) {
+  const numericWeek = Number(week);
+  if (!Number.isFinite(numericWeek)) return null;
+  return seasonType === 'postseason' ? maxRegularWeek + numericWeek : numericWeek;
+}
+
+function formatBacktestWeekLabel(seasonType: unknown, week: unknown) {
+  return normalizeSeasonType(seasonType) === 'postseason' ? 'Playoffs' : String(week);
 }
 
 function numberOrNull(value: unknown) {
@@ -603,7 +645,7 @@ function buildTalentScores(
 function mapRawStatRow(row: Record<string, any>): RawTeamGameStat {
   return {
     season: Number(row.season),
-    week: Number(row.week),
+    week: Number(row.model_week ?? row.week),
     team: String(row.team),
     opponent: String(row.opponent),
     ppa_off: numberOrNull(row.ppa_off),
@@ -851,7 +893,12 @@ async function runOptimizerThroughSeason(season: number) {
 
   for (const s of [...new Set([2022, 2023, 2024, 2025, season])]) {
     if (s > season) continue;
-    ratedGames.push(...await buildRatedGamesForSeason(s, { includeVegasLines: false }));
+    ratedGames.push(...await buildRatedGamesForSeason(s, {
+      dynamicRatings: true,
+      ratingFormula: currentConfig.ratingFormula,
+      coachInfluence: currentConfig.coachInfluence,
+      includeVegasLines: false
+    }));
   }
 
   for (const coachInfluence of coachOptions) {
@@ -1010,21 +1057,24 @@ async function buildRatedGamesForSeason(season: number, options: RatedGameBuildO
   return games
     .filter((game) => fbsTeams.has(String(game.home_team)) && fbsTeams.has(String(game.away_team)))
     .map((game): RatedGame | null => {
-      const ratings = weeklyRatings?.get(Number(game.week)) || storedRatings;
+      const modelWeek = Number(game.model_week ?? game.week);
+      const ratings = weeklyRatings?.get(modelWeek) || storedRatings;
       if (!ratings) return null;
       const home = ratings.get(String(game.home_team));
       const away = ratings.get(String(game.away_team));
       if (!home || !away) return null;
       return {
         season: Number(game.season),
-        week: Number(game.week),
+        week: modelWeek,
+        displayWeek: formatBacktestWeekLabel(game.season_type, game.week),
+        seasonType: String(game.season_type || 'regular'),
         homeTeam: String(game.home_team),
         awayTeam: String(game.away_team),
         home,
         away,
         homePoints: Number(game.home_points),
         awayPoints: Number(game.away_points),
-        vegasHomeSpread: lineMap.get(makeLineKey(game.season, game.week, game.home_team, game.away_team)) ?? null
+        vegasHomeSpread: lineMap.get(makeLineKey(game.season, game.season_type, game.week, game.home_team, game.away_team)) ?? null
       };
     })
     .filter((game): game is RatedGame => game !== null);
@@ -1042,6 +1092,7 @@ async function loadCompletedGameRowsForSeason(season: number) {
       .eq('season', season)
       .not('home_points', 'is', null)
       .not('away_points', 'is', null)
+      .order('model_week', { ascending: true, nullsFirst: false })
       .order('week', { ascending: true })
       .range(from, from + pageSize - 1);
 
@@ -1275,15 +1326,14 @@ async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibra
 }
 
 async function buildVegasLineMap(cfbd: CfbdClient, season: number) {
-  const lines = [
-    ...await cfbd.getBettingLines(season, 'regular'),
-    ...await cfbd.getBettingLines(season, 'postseason')
-  ];
   const map = new Map<string, number>();
-  for (const game of lines) {
-    const spread = pickVegasSpread(game.lines || []);
-    if (spread === null || !game.homeTeam || !game.awayTeam || !game.week) continue;
-    map.set(makeLineKey(season, game.week, game.homeTeam, game.awayTeam), spread);
+  for (const seasonType of ['regular', 'postseason'] as const) {
+    const lines = await cfbd.getBettingLines(season, seasonType);
+    for (const game of lines) {
+      const spread = pickVegasSpread(game.lines || []);
+      if (spread === null || !game.homeTeam || !game.awayTeam || !game.week) continue;
+      map.set(makeLineKey(season, seasonType, game.week, game.homeTeam, game.awayTeam), spread);
+    }
   }
   return map;
 }
@@ -1294,8 +1344,8 @@ function pickVegasSpread(lines: Array<{ provider?: string; spread?: number | nul
   return fallback ? Number(fallback.spread) : null;
 }
 
-function makeLineKey(season: number, week: number, homeTeam: string, awayTeam: string) {
-  return `${season}|${week}|${homeTeam}|${awayTeam}`.toLowerCase();
+function makeLineKey(season: number, seasonType: unknown, week: number, homeTeam: string, awayTeam: string) {
+  return `${season}|${normalizeSeasonType(seasonType)}|${week}|${homeTeam}|${awayTeam}`.toLowerCase();
 }
 
 function formatVegasSpread(homeTeam: string, awayTeam: string, homeSpread: number) {
@@ -1315,6 +1365,7 @@ function mapBacktestGameRow(game: EvaluatedGame) {
   return {
     season: game.season,
     week: game.week,
+    week_label: game.displayWeek || String(game.week),
     home_team: game.homeTeam,
     away_team: game.awayTeam,
     vegas_spread: game.vegasHomeSpread === null ? null : formatVegasSpread(game.homeTeam, game.awayTeam, game.vegasHomeSpread),
@@ -1340,9 +1391,14 @@ function mapBacktestGameRow(game: EvaluatedGame) {
 }
 
 function buildBacktestSummaryRows(season: number, games: EvaluatedGame[]) {
-  const rows = [...new Set(games.map((game) => game.week))]
-    .sort((a, b) => a - b)
-    .map((week) => buildSummaryRow(String(season), String(week), games.filter((game) => game.week === week)));
+  const grouped = new Map<string, EvaluatedGame[]>();
+  for (const game of games.slice().sort((a, b) => a.week - b.week)) {
+    const label = normalizeSeasonType(game.seasonType) === 'postseason'
+      ? 'Playoffs'
+      : String(game.displayWeek || game.week);
+    grouped.set(label, [...(grouped.get(label) || []), game]);
+  }
+  const rows = [...grouped.entries()].map(([week, weekGames]) => buildSummaryRow(String(season), week, weekGames));
 
   if (games.length) {
     rows.push(buildSummaryRow(String(season), `${season} TOTAL`, games));

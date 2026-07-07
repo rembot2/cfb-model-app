@@ -601,6 +601,146 @@ textarea:focus {
   margin-bottom: 18px;
 }
 
+.formula-studio {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.formula-command {
+  display: grid;
+  gap: 16px;
+}
+
+.formula-command-copy {
+  align-items: end;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(320px, 1.2fr);
+}
+
+.formula-command-copy h3 {
+  font-size: 24px;
+  margin-top: 6px;
+}
+
+.formula-command-fields {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+}
+
+.formula-command-fields label,
+.formula-control-card label {
+  color: var(--gold-2);
+  display: grid;
+  font-size: 11px;
+  font-weight: 950;
+  gap: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.formula-command-fields input,
+.formula-command-fields select {
+  min-height: 42px;
+  padding: 8px 10px;
+  text-transform: none;
+}
+
+.formula-weight-strip {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.formula-weight-chip {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+}
+
+.formula-weight-chip span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.formula-weight-chip strong {
+  color: #ffffff;
+  font-size: 22px;
+}
+
+.formula-action-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+}
+
+.formula-action-grid button {
+  width: 100%;
+}
+
+.formula-card-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+}
+
+.formula-control-card {
+  display: grid;
+  gap: 12px;
+}
+
+.formula-grid.compact {
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+}
+
+.formula-flow {
+  display: grid;
+  gap: 10px;
+}
+
+.formula-flow-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+}
+
+.formula-step {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-height: 180px;
+  padding: 14px;
+}
+
+.formula-step span {
+  color: var(--gold-2);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+}
+
+.formula-step strong {
+  color: #ffffff;
+  font-size: 17px;
+}
+
+.formula-step p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
 .formula-panel {
   align-self: start;
 }
@@ -840,6 +980,37 @@ textarea:focus {
 
 .formula-tables {
   gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.definition-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+}
+
+.definition-card {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.definition-card span {
+  color: var(--gold-2);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.definition-card p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
 }
 
 .coach-editor {
@@ -1216,6 +1387,14 @@ tbody tr.summary-total-row:nth-child(even) {
   .split-grid,
   .predictor-shell,
   .formula-layout,
+  .formula-command-copy,
+  .formula-command-fields,
+  .formula-weight-strip,
+  .formula-action-grid,
+  .formula-card-grid,
+  .formula-flow-grid,
+  .formula-tables,
+  .definition-grid,
   .coach-layout,
   .formula-grid,
   .rating-rings,

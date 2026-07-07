@@ -237,7 +237,7 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
         {status ? <p className="status-line">{status}</p> : null}
       </section>
 
-      <section className="panel formula-panel">
+      <section className="panel formula-panel formula-sticky">
         <h3>Exact Spread Formula</h3>
         <div className="formula-code">
           <p><strong>Pass advantage</strong> = home passing edge adjusted by home pass rate minus away passing edge adjusted by away pass rate.</p>

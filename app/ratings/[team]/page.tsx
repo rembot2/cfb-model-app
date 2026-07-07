@@ -57,18 +57,27 @@ export default async function TeamRatingPage({ params, searchParams }: TeamRatin
 
   return (
     <>
-      <header className="topbar">
+      <header className="page-hero">
         <div>
-          <div className="eyebrow">Ratings</div>
+          <div className="eyebrow">Team Profile</div>
           <h2>{team}</h2>
           <p className="page-subtitle">
-            {season} season{rank ? ` | Rank #${rank}` : ''}
+            {season} season{rank ? ` | National rank #${rank}` : ''}. Complete rating profile, matchup splits, position groups, and roster board.
           </p>
         </div>
-        <SeasonSelect seasons={seasons} selected={season} />
+        <div className="page-hero-actions">
+          <SeasonSelect seasons={seasons} selected={season} />
+        </div>
       </header>
 
       <Link className="back-link" href={`/ratings?season=${season ?? ''}`}>Back to ratings</Link>
+
+      <section className="page-summary-grid">
+        <SummaryTile label="Rank" value={rank ? `#${rank}` : '-'} detail={`${season ?? '-'} national board`} />
+        <SummaryTile label="Pass Rate" value={fmtPct(row.pass_rate)} detail="Offensive tendency" />
+        <SummaryTile label="Best Unit" value={bestUnit(row)} detail="Highest position group" />
+        <SummaryTile label="Roster Players" value={String(roster.length)} detail="Loaded for profile" />
+      </section>
 
       <section className="rating-rings">
         <RatingRing label="Composite" value={row.composite} delta={row.composite_delta} />
@@ -76,9 +85,12 @@ export default async function TeamRatingPage({ params, searchParams }: TeamRatin
         <RatingRing label="Defense" value={row.def_rating} delta={row.def_rating_delta} />
       </section>
 
-      <section className="detail-section">
+      <section className="detail-section panel">
         <div className="panel-header">
-          <h3>Pass / Rush Ratings</h3>
+          <div>
+            <h3>Matchup Splits</h3>
+            <p className="page-subtitle">These are the ratings the game predictor uses for pass/rush edges.</p>
+          </div>
         </div>
         <div className="rating-card-grid">
           {matchupRatings.map(([label, key]) => (
@@ -87,9 +99,12 @@ export default async function TeamRatingPage({ params, searchParams }: TeamRatin
         </div>
       </section>
 
-      <section className="detail-section">
+      <section className="detail-section panel">
         <div className="panel-header">
-          <h3>Position Ratings</h3>
+          <div>
+            <h3>Position Groups + Roster</h3>
+            <p className="page-subtitle">Players are sorted by rating inside each position room.</p>
+          </div>
         </div>
         <div className="position-roster-grid">
           {positionRatings.map(([label, key]) => (
@@ -103,6 +118,16 @@ export default async function TeamRatingPage({ params, searchParams }: TeamRatin
         </div>
       </section>
     </>
+  );
+}
+
+function SummaryTile({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <article className="summary-tile">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </article>
   );
 }
 
@@ -186,6 +211,21 @@ function numberValue(value: unknown) {
 function fmt(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(2).replace(/\.00$/, '') : '';
+}
+
+function fmtPct(value: unknown) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  const pct = n <= 1 ? n * 100 : n;
+  return `${fmt(pct)}%`;
+}
+
+function bestUnit(row: Record<string, unknown>) {
+  const best = positionRatings
+    .map(([label, key]) => ({ label, value: Number(row[key]) }))
+    .filter(item => Number.isFinite(item.value))
+    .sort((a, b) => b.value - a.value)[0];
+  return best ? best.label : '-';
 }
 
 function normalizePosition(value: unknown) {

@@ -296,6 +296,116 @@ button:disabled {
   box-shadow: 0 0 42px rgba(255, 255, 255, 0.1), var(--gold-shadow);
 }
 
+.page-hero {
+  align-items: end;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.022)),
+    linear-gradient(90deg, rgba(216, 168, 78, 0.12), transparent 58%);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 16px;
+  overflow: hidden;
+  padding: 22px;
+  position: relative;
+}
+
+.page-hero::after {
+  background: linear-gradient(115deg, transparent 0 78%, rgba(216, 168, 78, 0.14));
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.page-hero h2 {
+  max-width: 860px;
+}
+
+.page-hero-actions {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  position: relative;
+  z-index: 1;
+}
+
+.page-summary-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  margin-bottom: 16px;
+}
+
+.summary-tile {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 8px;
+  min-height: 102px;
+  padding: 15px;
+  position: relative;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.summary-tile:hover {
+  border-color: rgba(216, 168, 78, 0.5);
+  box-shadow: var(--shadow), var(--gold-shadow);
+  transform: translateY(-2px) scale(1.015);
+}
+
+.summary-tile span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.summary-tile strong {
+  color: #ffffff;
+  font-size: 26px;
+  line-height: 1.05;
+}
+
+.summary-tile small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.page-grid,
+.content-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.split-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 0.92fr) minmax(360px, 1.08fr);
+}
+
+.section-heading {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 4px 0 10px;
+}
+
+.section-heading h3 {
+  color: #ffffff;
+  font-size: 18px;
+  margin: 0;
+}
+
 .topbar {
   align-items: flex-end;
   display: flex;
@@ -495,6 +605,11 @@ textarea:focus {
   align-self: start;
 }
 
+.formula-sticky {
+  position: sticky;
+  top: 20px;
+}
+
 .formula-reference,
 .optimizer-summary {
   margin-top: 18px;
@@ -518,6 +633,13 @@ textarea:focus {
   gap: 14px;
 }
 
+.predictor-shell {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(340px, 0.78fr) minmax(0, 1.22fr);
+}
+
 .predictor-controls label,
 .predictor-grid label,
 .formula-grid label,
@@ -533,7 +655,7 @@ textarea:focus {
 
 .predictor-grid {
   display: grid;
-  grid-template-columns: 120px repeat(2, minmax(190px, 1fr)) minmax(170px, 0.7fr);
+  grid-template-columns: repeat(2, minmax(190px, 1fr));
   gap: 12px;
 }
 
@@ -572,12 +694,20 @@ textarea:focus {
   min-height: 180px;
 }
 
+.predictor-stage {
+  min-height: 100%;
+}
+
 .predictor-kpis .card strong {
   font-size: 24px;
 }
 
 .predictor-detail-grid {
-  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr) minmax(220px, 0.8fr);
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+  margin-top: 14px;
+}
+
+.predictor-formula-panel {
   margin-top: 14px;
 }
 
@@ -717,10 +847,15 @@ textarea:focus {
   gap: 12px;
 }
 
+.coach-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(260px, 0.34fr) minmax(0, 1fr);
+}
+
 .coach-toolbar {
   align-items: flex-end;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 14px;
 }
 
@@ -974,6 +1109,13 @@ textarea:focus {
   max-height: calc(100vh - 142px);
 }
 
+.table-panel .table-shell {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  max-height: calc(100vh - 300px);
+}
+
 table {
   border-collapse: collapse;
   min-width: 920px;
@@ -1067,9 +1209,14 @@ tbody tr.summary-total-row:nth-child(even) {
   }
 
   .hero-panel,
+  .page-hero,
   .kpi-grid,
+  .page-summary-grid,
   .dashboard-grid,
+  .split-grid,
+  .predictor-shell,
   .formula-layout,
+  .coach-layout,
   .formula-grid,
   .rating-rings,
   .rating-card-grid,

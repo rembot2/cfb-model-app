@@ -104,12 +104,12 @@ export function MatchupPredictor({ data }: { data: PredictorData }) {
   }
 
   return (
-    <div className="predictor-layout">
+    <div className="predictor-shell">
       <section className="panel predictor-controls">
         <div className="panel-header">
           <div>
-            <h3>Build Matchup</h3>
-            <p className="page-subtitle">Pick any two rated teams and choose the game site.</p>
+            <h3>Matchup Inputs</h3>
+            <p className="page-subtitle">Set the matchup once, then use the output panel as your game preview.</p>
           </div>
         </div>
 
@@ -136,18 +136,23 @@ export function MatchupPredictor({ data }: { data: PredictorData }) {
 
         <div className="button-row predictor-actions">
           <button disabled={busy || !teamA || !teamB || teamA === teamB} onClick={predict}>Predict Game</button>
-          {status ? <span className="status-text">{status}</span> : null}
+        {status ? <span className="status-text">{status}</span> : null}
         </div>
       </section>
 
-      {result?.prediction ? (
-        <PredictionResult result={result} />
-      ) : (
-        <section className="panel predictor-empty">
-          <h3>Prediction Output</h3>
-          <p>Choose two teams and run the model to see the projected spread, score, win probability, and matchup edges.</p>
-        </section>
-      )}
+      <div className="predictor-stage">
+        {result?.prediction ? (
+          <PredictionResult result={result} />
+        ) : (
+          <section className="panel predictor-empty">
+            <div className="panel-header">
+              <h3>Projection Board</h3>
+              <span className="muted">waiting for matchup</span>
+            </div>
+            <p>Choose two teams and run the model to see the projected spread, score, win probability, and matchup edges.</p>
+          </section>
+        )}
+      </div>
     </div>
   );
 }
@@ -201,8 +206,9 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
           <RatingCompare team={teamA} rating={ratingA} />
           <RatingCompare team={teamB} rating={ratingB} />
         </div>
+      </section>
 
-        <div className="panel">
+      <section className="panel predictor-formula-panel">
           <div className="panel-header">
             <h3>Formula Used</h3>
             <span className="muted">{result.formula?.name || 'active'}</span>
@@ -215,7 +221,6 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
             <div><dt>Home Field</dt><dd>{fmt(result.formula?.calibration.homeField)}</dd></div>
             <div><dt>Shrink</dt><dd>{fmt(result.formula?.calibration.marginShrink)}</dd></div>
           </dl>
-        </div>
       </section>
     </div>
   );

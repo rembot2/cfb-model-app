@@ -8,11 +8,20 @@ export default async function PredictPage() {
 
   return (
     <>
-      <header className="topbar">
+      <header className="page-hero">
         <div>
-          <div className="eyebrow">Matchup Tool</div>
-          <h2>Game Predictor</h2>
-          <p className="page-subtitle">Choose any two teams and generate a model spread with matchup edges.</p>
+          <div className="eyebrow">Matchup Lab</div>
+          <h2>Build a custom game projection.</h2>
+          <p className="page-subtitle">
+            Pick a season, choose two teams, set the site, and the model returns the spread, score estimate, win probability, and matchup edges.
+          </p>
+        </div>
+        <div className="page-hero-actions">
+          <span className="summary-tile">
+            <span>Available Seasons</span>
+            <strong>{data.seasons.length}</strong>
+            <small>{data.selectedSeason ?? '-'} loaded first</small>
+          </span>
         </div>
       </header>
       <MatchupPredictor data={data} />

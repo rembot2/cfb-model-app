@@ -1,5 +1,6 @@
 import { BarList } from '@/components/BarList';
 import { fetchDashboardData, summarizeBacktestGames } from '@/lib/db/queries';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,10 +18,20 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <header className="topbar">
+      <header className="hero-panel">
         <div>
-          <div className="eyebrow">Version 3</div>
-          <h2>Dashboard</h2>
+          <div className="eyebrow">Phillips-David Model</div>
+          <h2>College football ratings with a betting-grade feedback loop.</h2>
+          <p className="hero-copy">
+            Power ratings, matchup projections, optimizer results, and backtest validation built into one live model workspace.
+          </p>
+          <div className="hero-actions">
+            <Link className="button-link primary" href="/predict">Open Matchup Lab</Link>
+            <Link className="button-link" href="/ratings">View Power Ratings</Link>
+          </div>
+        </div>
+        <div className="hero-badge">
+          <img src="/brand/pd-logo.png" alt="" />
         </div>
       </header>
 
@@ -34,25 +45,40 @@ export default async function DashboardPage() {
       <section className="grid dashboard-grid">
         <div className="panel">
           <div className="panel-header">
-            <h3>Top Ratings</h3>
+            <h3>Power Rating Board</h3>
             <span className="muted">{latestSeason || '-'}</span>
           </div>
           <BarList items={ratings.slice(0, 15).map(row => ({ name: String(row.team), value: Number(row.composite) || 0 }))} />
         </div>
         <div className="panel">
           <div className="panel-header">
-            <h3>Spread Buckets</h3>
+            <h3>Spread Accuracy</h3>
             <span className="muted">pick rate</span>
           </div>
           <BarList items={spreadBuckets.map(row => ({ name: String(row.bucket), value: Number(row.pick_pct) || 0, suffix: '%' }))} />
         </div>
         <div className="panel">
           <div className="panel-header">
-            <h3>Vegas Difference</h3>
+            <h3>Market Edge</h3>
             <span className="muted">pick rate</span>
           </div>
           <BarList items={vegasBuckets.map(row => ({ name: String(row.bucket), value: Number(row.pick_pct) || 0, suffix: '%' }))} />
         </div>
+      </section>
+
+      <section className="feature-strip">
+        <Link href="/formula">
+          <span>Formula Studio</span>
+          <strong>Tune ratings, coach boosts, and prediction weights.</strong>
+        </Link>
+        <Link href="/optimizer">
+          <span>Optimizer</span>
+          <strong>Find the best-performing formula combinations.</strong>
+        </Link>
+        <Link href="/backtest-results">
+          <span>Validation</span>
+          <strong>Audit every historical game prediction.</strong>
+        </Link>
       </section>
     </>
   );

@@ -86,8 +86,12 @@ export function CoachControls({
   }, []);
 
   return (
-    <div className="coach-editor">
+    <div className="coach-layout">
       <div className="panel coach-toolbar">
+        <div>
+          <h3>Bulk Save Panel</h3>
+          <p className="page-subtitle">Make all coach edits in the table, then save and recalculate once.</p>
+        </div>
         <button disabled={savingAll} onClick={saveAllAndRecalculate}>
           {savingAll ? 'Working' : `Save All + Recalc${dirtyTeams.size ? ` (${dirtyTeams.size})` : ''}`}
         </button>
@@ -96,56 +100,67 @@ export function CoachControls({
           <span>Coach D Boost: {fmt(coachDefenseBoost)}</span>
           <span>Dev Boost: {fmt(coachDevelopmentBoost)}</span>
         </div>
-        <p className="page-subtitle">Edit as many rows as you want, then save all changes and recalculate once.</p>
+        <p className="page-subtitle">Changed rows are tracked locally until you press the save button.</p>
       </div>
 
-      <div className="table-shell coach-table-shell">
-        <table>
-          <thead>
-            <tr>
-              <th>Team</th>
-              <th>Coach</th>
-              <th className="num">Hire Year</th>
-              <th className="num">Offense</th>
-              <th className="num">Defense</th>
-              <th>Development</th>
-              <th>Source</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(row => (
-              <tr key={row.team}>
-                <td>{row.team}</td>
-                <td>{row.coachName}</td>
-                <td className="num">
-                  <input
-                    className="coach-year-input"
-                    value={row.hireYear}
-                    onChange={event => updateRow(row.team, { hireYear: event.target.value })}
-                  />
-                </td>
-                <td className="num">
-                  <select value={row.offenseRating} onChange={event => updateRow(row.team, { offenseRating: Number(event.target.value) })}>
-                    {ratingOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                  </select>
-                </td>
-                <td className="num">
-                  <select value={row.defenseRating} onChange={event => updateRow(row.team, { defenseRating: Number(event.target.value) })}>
-                    {ratingOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                  </select>
-                </td>
-                <td>
-                  <select value={row.developmentRating} onChange={event => updateRow(row.team, { developmentRating: event.target.value })}>
-                    {developmentOptions.map(option => <option key={option} value={option}>{option}</option>)}
-                  </select>
-                </td>
-                <td>{row.source}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="content-stack">
+        <section className="panel table-panel">
+          <div className="panel-header">
+            <div>
+              <h3>Coach Ratings Table</h3>
+              <p className="page-subtitle">Offense and defense are 1-10 ratings. Development controls the composite boost.</p>
+            </div>
+            <span className="muted">{dirtyTeams.size} unsaved</span>
+          </div>
+          <div className="table-shell coach-table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  <th>Coach</th>
+                  <th className="num">Hire Year</th>
+                  <th className="num">Offense</th>
+                  <th className="num">Defense</th>
+                  <th>Development</th>
+                  <th>Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(row => (
+                  <tr key={row.team}>
+                    <td>{row.team}</td>
+                    <td>{row.coachName}</td>
+                    <td className="num">
+                      <input
+                        className="coach-year-input"
+                        value={row.hireYear}
+                        onChange={event => updateRow(row.team, { hireYear: event.target.value })}
+                      />
+                    </td>
+                    <td className="num">
+                      <select value={row.offenseRating} onChange={event => updateRow(row.team, { offenseRating: Number(event.target.value) })}>
+                        {ratingOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </td>
+                    <td className="num">
+                      <select value={row.defenseRating} onChange={event => updateRow(row.team, { defenseRating: Number(event.target.value) })}>
+                        {ratingOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select value={row.developmentRating} onChange={event => updateRow(row.team, { developmentRating: event.target.value })}>
+                        {developmentOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </td>
+                    <td>{row.source}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {status ? <p className="status-line">{status}</p> : null}
       </div>
-      {status ? <p className="status-line">{status}</p> : null}
     </div>
   );
 }

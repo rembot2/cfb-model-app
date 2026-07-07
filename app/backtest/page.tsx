@@ -11,12 +11,17 @@ export default async function BacktestPage({ searchParams }: { searchParams?: { 
 
   return (
     <>
-      <header className="topbar">
+      <header className="page-hero">
         <div>
-          <div className="eyebrow">Backtest</div>
-          <h2>Summary</h2>
+          <div className="eyebrow">Validation</div>
+          <h2>Backtest performance report.</h2>
+          <p className="page-subtitle">
+            Review the model by season, week, margin error, and market-edge results. The total row is recalculated from game-level predictions.
+          </p>
         </div>
-        <SeasonSelect seasons={data.seasons} selected={data.season} />
+        <div className="page-hero-actions">
+          <SeasonSelect seasons={data.seasons} selected={data.season} />
+        </div>
       </header>
 
       <section className="rating-rings">
@@ -25,10 +30,20 @@ export default async function BacktestPage({ searchParams }: { searchParams?: { 
         <MetricRing label="Vegas Edge Win %" value={data.overall.vegas_edge_win_pct} mode="pct" />
       </section>
 
-      <section className="panel backtest-season-panel">
+      <section className="page-summary-grid">
+        <SummaryTile label="Season Games" value={String(data.seasonTotal.games)} detail={`${data.season ?? '-'} selected`} />
+        <SummaryTile label="Season Pick %" value={pct(data.seasonTotal.pick_pct) || '-'} detail={`${data.seasonTotal.picks_correct}-${data.seasonTotal.picks_wrong}`} />
+        <SummaryTile label="Within 7" value={countPct(data.seasonTotal.within_7, data.seasonTotal.within_7_pct)} detail="Margin error check" />
+        <SummaryTile label="Vegas Edge" value={pct(data.seasonTotal.vegas_edge_win_pct) || '-'} detail={record(data.seasonTotal)} />
+      </section>
+
+      <section className="panel table-panel backtest-season-panel">
         <div className="panel-header">
-          <h3>{data.season ?? '-'} Weekly Results</h3>
-          <span className="muted">Totals are recalculated from game rows</span>
+          <div>
+            <h3>{data.season ?? '-'} Weekly Results</h3>
+            <p className="page-subtitle">Use this to spot which weeks the model handled well or missed.</p>
+          </div>
+          <span className="muted">Totals recalculated from games</span>
         </div>
         <div className="table-shell">
           <table>
@@ -76,6 +91,16 @@ export default async function BacktestPage({ searchParams }: { searchParams?: { 
         </div>
       </section>
     </>
+  );
+}
+
+function SummaryTile({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <article className="summary-tile">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </article>
   );
 }
 

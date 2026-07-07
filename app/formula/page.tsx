@@ -9,20 +9,32 @@ export default async function FormulaPage() {
 
   return (
     <>
-      <header className="topbar">
+      <header className="page-hero">
         <div>
-          <div className="eyebrow">Formula</div>
-          <h2>Model Controls</h2>
-          <p className="page-subtitle">Adjust the same values that used to feel like spreadsheet cells.</p>
+          <div className="eyebrow">Formula Studio</div>
+          <h2>Tune the model without touching code.</h2>
+          <p className="page-subtitle">
+            Adjust spread weights, coach boosts, talent/stat blend, and refresh jobs from one control center.
+          </p>
         </div>
       </header>
+
+      <section className="page-summary-grid">
+        <SummaryTile label="Active Formula" value={String(activeConfig?.name ?? '-')} detail="Currently used by predictions" />
+        <SummaryTile label="Pass / Rush" value={`${fmt(activeConfig?.pass_weight)}/${fmt(activeConfig?.rush_weight)}`} detail="Spread matchup weights" />
+        <SummaryTile label="Coach Boosts" value={`${fmt(activeConfig?.coach_offense_boost)}/${fmt(activeConfig?.coach_defense_boost)}`} detail="Offense / defense boost" />
+        <SummaryTile label="Ramp Weeks" value={fmt(activeConfig?.rating_talent_ramp_weeks) || '-'} detail="Talent-to-stats transition" />
+      </section>
 
       <FormulaControls activeConfig={activeConfig} />
 
       <div className="grid formula-tables">
-        <section>
+        <section className="panel table-panel">
           <div className="panel-header">
-            <h3>Recent Formulas</h3>
+            <div>
+              <h3>Recent Formulas</h3>
+              <p className="page-subtitle">Saved formula versions, newest first.</p>
+            </div>
           </div>
           <Table
             rows={recentConfigs}
@@ -49,9 +61,12 @@ export default async function FormulaPage() {
           />
         </section>
 
-        <section>
+        <section className="panel table-panel">
           <div className="panel-header">
-            <h3>Best Optimizer Rows</h3>
+            <div>
+              <h3>Best Optimizer Rows</h3>
+              <p className="page-subtitle">Top rows from the most recent optimizer run.</p>
+            </div>
           </div>
           <Table
             rows={optimizer}
@@ -97,6 +112,16 @@ export default async function FormulaPage() {
         </p>
       </section>
     </>
+  );
+}
+
+function SummaryTile({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <article className="summary-tile">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </article>
   );
 }
 

@@ -13,8 +13,7 @@ const navGroups = [
     links: [
       ['Command Center', '/'],
       ['Power Ratings', '/ratings'],
-      ['Matchup Lab', '/predict'],
-      ['Game Board', '/games']
+      ['Matchup Lab', '/predict']
     ]
   },
   {

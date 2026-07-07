@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 
 type FormulaConfig = {
@@ -161,41 +162,32 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
   }
 
   return (
-    <div className="formula-layout">
-      <section className="panel formula-panel">
-        <div className="panel-header">
+    <div className="formula-studio">
+      <section className="panel formula-command">
+        <div className="formula-command-copy">
           <div>
-            <h3>Editable Formula</h3>
-            <p className="page-subtitle">Change the model knobs here instead of editing code.</p>
+            <span className="eyebrow">Control Center</span>
+            <h3>Active Formula Workspace</h3>
+            <p className="page-subtitle">Save the formula first, then run whatever refresh job you need.</p>
+          </div>
+          <div className="formula-command-fields">
+            <label>
+              Formula Name
+              <input value={name} onChange={event => setName(event.target.value)} />
+            </label>
+            <Select label="Action Season" value={runSeason} options={seasonOptions} onChange={setRunSeason} help="Controls season-specific recalc buttons only." />
           </div>
         </div>
 
-        <div className="formula-grid">
-          <label>
-            Formula Name
-            <input value={name} onChange={event => setName(event.target.value)} />
-          </label>
-          <Select label="Run Buttons Season" value={runSeason} options={seasonOptions} onChange={setRunSeason} help="Only controls which season the Recalc Ratings, Backtest, and Optimizer buttons run." />
-          <Select label="Pass Advantage Weight" value={passWeight} options={weightOptions} onChange={setPassWeight} help="How much the game spread rewards passing offense versus the opponent passing defense." />
-          <Select label="Rush Advantage Weight" value={rushWeight} options={weightOptions} onChange={setRushWeight} help="How much the game spread rewards rushing offense versus the opponent rushing defense." />
-          <Select label="Overall Advantage Weight" value={overallWeight} options={weightOptions} onChange={setOverallWeight} help="How much the spread uses total offense versus total defense matchup edges." />
-          <Select label="Composite Advantage Weight" value={compositeWeight} options={weightOptions} onChange={setCompositeWeight} help="How much the spread uses the simple team composite gap." />
-          <Select label="Points Per Rating" value={pointsPerRating} options={pointsOptions} onChange={setPointsPerRating} help="Turns a rating-point edge into projected scoreboard points." />
-          <Select label="Home Field" value={homeField} options={homeFieldOptions} onChange={setHomeField} help="Points added to the home team's predicted margin." />
-          <Select label="Margin Shrink" value={marginShrink} options={shrinkOptions} onChange={setMarginShrink} help="Pulls extreme predicted margins back toward zero." />
-          <Select label="Max Margin" value={maxMargin} options={maxMarginOptions} onChange={setMaxMargin} help="Hard cap so one team cannot be projected above this margin." />
-          <Select label="Coach Offense Boost" value={coachOffenseBoost} options={coachBoostOptions} onChange={setCoachOffenseBoost} help="Multiplier for each coach's 1-10 offensive rating." />
-          <Select label="Coach Defense Boost" value={coachDefenseBoost} options={coachBoostOptions} onChange={setCoachDefenseBoost} help="Multiplier for each coach's 1-10 defensive rating." />
-          <Select label="Coach Development Boost" value={coachDevelopmentBoost} options={coachBoostOptions} onChange={setCoachDevelopmentBoost} help="Multiplier for Elite/Good/Average/Poor/Terrible development tiers." />
-          <Select label="Stats Recency Weight" value={ratingRecencyWeight} options={recencyOptions} onChange={setRatingRecencyWeight} help="Higher means older seasons fade faster in the ratings calculation." />
-          <Select label="Overall Talent Weight" value={ratingTalentWeight} options={splitOptions} onChange={setRatingTalentWeight} help="How much total composite rating uses roster talent instead of performance stats." />
-          <Select label="Late Season Talent Weight" value={ratingHistoricalPositionWeight} options={splitOptions} onChange={setRatingHistoricalPositionWeight} help="Talent share after enough games have been played. 0.30 means 30% talent and 70% stats." />
-          <Select label="Early Season Talent Weight" value={ratingPreseasonPositionWeight} options={splitOptions} onChange={setRatingPreseasonPositionWeight} help="Talent share at the start of a season before stats are trustworthy." />
-          <Select label="Talent Ramp Weeks" value={ratingTalentRampWeeks} options={rampWeekOptions} onChange={setRatingTalentRampWeeks} help="How many weeks it takes to move from early talent weight to late-season talent weight." />
+        <div className="formula-weight-strip">
+          <WeightChip label="Pass" value={normalized.pass} />
+          <WeightChip label="Rush" value={normalized.rush} />
+          <WeightChip label="Overall" value={normalized.overall} />
+          <WeightChip label="Composite" value={normalized.composite} />
         </div>
 
-        <div className="button-row">
-          <button disabled={busy} onClick={saveFormula}>Save Active Formula</button>
+        <div className="formula-action-grid">
+          <button disabled={busy} onClick={saveFormula}>Save Formula</button>
           <button
             disabled={busy}
             onClick={() => runUpdate('2026 ratings and predictions', {
@@ -214,14 +206,9 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
               'All backtests started in GitHub Actions. It will rebuild 2022-2025 using the active formula.'
             )}
           >
-            Run All Backtests
+            Run Backtests
           </button>
-          <button
-            disabled={busy}
-            onClick={runFullOptimizer}
-          >
-            Run Optimizer
-          </button>
+          <button disabled={busy} onClick={runFullOptimizer}>Run Optimizer</button>
           <button
             disabled={busy}
             onClick={() => runGithubWorkflow(
@@ -232,32 +219,112 @@ export function FormulaControls({ activeConfig }: { activeConfig: FormulaConfig 
           >
             Recalc All Ratings
           </button>
-          <button disabled={busy} onClick={runFullRefresh}>Run Full Refresh</button>
+          <button disabled={busy} onClick={runFullRefresh}>Full Refresh</button>
         </div>
         {status ? <p className="status-line">{status}</p> : null}
       </section>
 
-      <section className="panel formula-panel formula-sticky">
-        <h3>Exact Spread Formula</h3>
-        <div className="formula-code">
-          <p><strong>Pass advantage</strong> = home passing edge adjusted by home pass rate minus away passing edge adjusted by away pass rate.</p>
-          <p><strong>Rush advantage</strong> = home rushing edge adjusted by home rush rate minus away rushing edge adjusted by away rush rate.</p>
-          <p><strong>Overall advantage</strong> = ((home offense - away defense) - (away offense - home defense)) / 2.</p>
-          <p><strong>Composite advantage</strong> = home composite - away composite.</p>
-          <p>
-            <strong>Weighted rating gap</strong> = passAdv * {percent(normalized.pass)} + rushAdv * {percent(normalized.rush)} + overallAdv * {percent(normalized.overall)} + compositeAdv * {percent(normalized.composite)}.
-          </p>
-          <p><strong>Raw home margin</strong> = weightedRatingGap * {pointsPerRating.toFixed(1)} + {homeField.toFixed(1)}.</p>
-          <p><strong>Final margin</strong> = raw margin * {marginShrink.toFixed(2)}, capped at +/- {maxMargin.toFixed(1)}, rounded to the nearest 0.5.</p>
-          <p><strong>Coach offense boost</strong> = (coach offense rating - 5.5) * {coachOffenseBoost.toFixed(2)} and is added to pass/rush offense.</p>
-          <p><strong>Coach defense boost</strong> = (coach defense rating - 5.5) * {coachDefenseBoost.toFixed(2)} and is added to pass/rush defense.</p>
-          <p><strong>Development boost</strong> = development tier score * {coachDevelopmentBoost.toFixed(2)} and is added to composite only.</p>
-          <p><strong>Rating formula</strong> uses weighted seasons where seasonWeight = (1 / {ratingRecencyWeight.toFixed(2)}) ^ (targetSeason - statSeason). Performance is PPA, success rate, and points per drive. Composite raw = performanceScore * {(1 - ratingTalentWeight).toFixed(2)} + talentZ * 10 * {ratingTalentWeight.toFixed(2)}.</p>
-          <p><strong>Talent/stat ramp</strong> starts at {percent(ratingPreseasonPositionWeight)} talent and {percent(1 - ratingPreseasonPositionWeight)} stats, then moves toward {percent(ratingHistoricalPositionWeight)} talent and {percent(1 - ratingHistoricalPositionWeight)} stats by week {ratingTalentRampWeeks.toFixed(0)}.</p>
-          <p><strong>Coach timing</strong> only applies a coach's boosts in seasons where that coach has already been hired. For example, a 2025 hire does not change 2022, 2023, or 2024 ratings.</p>
+      <div className="formula-card-grid">
+        <ControlCard eyebrow="Spread Engine" title="Matchup Weights" detail="Controls which team advantages move the projected spread.">
+          <div className="formula-grid compact">
+            <Select label="Pass Advantage" value={passWeight} options={weightOptions} onChange={setPassWeight} help="Passing offense versus passing defense." />
+            <Select label="Rush Advantage" value={rushWeight} options={weightOptions} onChange={setRushWeight} help="Rushing offense versus rushing defense." />
+            <Select label="Overall Advantage" value={overallWeight} options={weightOptions} onChange={setOverallWeight} help="Total offense versus total defense." />
+            <Select label="Composite Gap" value={compositeWeight} options={weightOptions} onChange={setCompositeWeight} help="Raw team strength difference." />
+          </div>
+        </ControlCard>
+
+        <ControlCard eyebrow="Spread Engine" title="Margin Calibration" detail="Turns rating gaps into a readable football line.">
+          <div className="formula-grid compact">
+            <Select label="Points Per Rating" value={pointsPerRating} options={pointsOptions} onChange={setPointsPerRating} help="Rating edge to scoreboard points." />
+            <Select label="Home Field" value={homeField} options={homeFieldOptions} onChange={setHomeField} help="Points added to the home team." />
+            <Select label="Margin Shrink" value={marginShrink} options={shrinkOptions} onChange={setMarginShrink} help="Pulls extreme margins back." />
+            <Select label="Max Margin" value={maxMargin} options={maxMarginOptions} onChange={setMaxMargin} help="Caps the model spread." />
+          </div>
+        </ControlCard>
+
+        <ControlCard eyebrow="Ratings Engine" title="Talent + Stats Blend" detail="Controls how team ratings mature as the season gains real games.">
+          <div className="formula-grid compact">
+            <Select label="Stats Recency" value={ratingRecencyWeight} options={recencyOptions} onChange={setRatingRecencyWeight} help="Higher fades older seasons faster." />
+            <Select label="Composite Talent" value={ratingTalentWeight} options={splitOptions} onChange={setRatingTalentWeight} help="Talent share in total rating." />
+            <Select label="Early Talent" value={ratingPreseasonPositionWeight} options={splitOptions} onChange={setRatingPreseasonPositionWeight} help="Preseason position talent weight." />
+            <Select label="Late Talent" value={ratingHistoricalPositionWeight} options={splitOptions} onChange={setRatingHistoricalPositionWeight} help="Talent weight after ramp." />
+            <Select label="Ramp Weeks" value={ratingTalentRampWeeks} options={rampWeekOptions} onChange={setRatingTalentRampWeeks} help="Weeks to reach late-season blend." />
+          </div>
+        </ControlCard>
+
+        <ControlCard eyebrow="Ratings Engine" title="Coach Influence" detail="Applies coach ratings only after each coach's hire year.">
+          <div className="formula-grid compact">
+            <Select label="Offense Boost" value={coachOffenseBoost} options={coachBoostOptions} onChange={setCoachOffenseBoost} help="Boost from offensive coach rating." />
+            <Select label="Defense Boost" value={coachDefenseBoost} options={coachBoostOptions} onChange={setCoachDefenseBoost} help="Boost from defensive coach rating." />
+            <Select label="Development Boost" value={coachDevelopmentBoost} options={coachBoostOptions} onChange={setCoachDevelopmentBoost} help="Composite boost from dev tier." />
+          </div>
+        </ControlCard>
+      </div>
+
+      <section className="panel formula-flow">
+        <div className="panel-header">
+          <div>
+            <span className="eyebrow">Formula Flow</span>
+            <h3>How a spread is built</h3>
+          </div>
+        </div>
+        <div className="formula-flow-grid">
+          <FormulaStep number="01" title="Rate Teams" detail={`Stats fade by ${(1 / ratingRecencyWeight).toFixed(2)} per season. Talent blend starts at ${percent(ratingPreseasonPositionWeight)} and moves to ${percent(ratingHistoricalPositionWeight)} by week ${ratingTalentRampWeeks.toFixed(0)}.`} />
+          <FormulaStep number="02" title="Apply Coaches" detail={`Offense boost ${coachOffenseBoost.toFixed(2)}, defense boost ${coachDefenseBoost.toFixed(2)}, development boost ${coachDevelopmentBoost.toFixed(2)}. Hire year rules prevent future coaches from affecting old seasons.`} />
+          <FormulaStep number="03" title="Compare Matchups" detail={`Weighted gap = pass ${percent(normalized.pass)}, rush ${percent(normalized.rush)}, overall ${percent(normalized.overall)}, composite ${percent(normalized.composite)}.`} />
+          <FormulaStep number="04" title="Convert To Points" detail={`Raw margin = weighted gap * ${pointsPerRating.toFixed(1)} + ${homeField.toFixed(1)} home-field points.`} />
+          <FormulaStep number="05" title="Finish Spread" detail={`Final line = margin * ${marginShrink.toFixed(2)}, capped at ${maxMargin.toFixed(1)} and rounded to the nearest half point.`} />
         </div>
       </section>
     </div>
+  );
+}
+
+function ControlCard({
+  eyebrow,
+  title,
+  detail,
+  children
+}: {
+  eyebrow: string;
+  title: string;
+  detail: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="panel formula-control-card">
+      <div className="panel-header">
+        <div>
+          <span className="eyebrow">{eyebrow}</span>
+          <h3>{title}</h3>
+          <p className="page-subtitle">{detail}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function WeightChip({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="formula-weight-chip">
+      <span>{label}</span>
+      <strong>{percent(value)}</strong>
+      <div className="mini-meter">
+        <div style={{ width: percent(value) }} />
+      </div>
+    </div>
+  );
+}
+
+function FormulaStep({ number, title, detail }: { number: string; title: string; detail: string }) {
+  return (
+    <article className="formula-step">
+      <span>{number}</span>
+      <strong>{title}</strong>
+      <p>{detail}</p>
+    </article>
   );
 }
 

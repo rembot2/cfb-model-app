@@ -88,30 +88,40 @@ export default async function FormulaPage() {
       </div>
 
       <section className="panel formula-reference">
-        <h3>Ratings Definition</h3>
-        <p>
-          Team ratings start with on-field team stats, roster talent, position talent, and coach inputs. The stats side uses PPA,
-          success rate, points per drive, rush PPA, and pass PPA, with older seasons reduced by the recency setting.
-        </p>
-        <p>
-          Position ratings are built from each team's roster by position group. Rush offense is driven by RB and OL, pass offense by
-          QB, WR, TE, and OL, rush defense by DL and LB, and pass defense by DL, CB, and S.
-        </p>
-        <p>
-          Early in a season, pass/rush ratings trust talent more. Each week, the model moves toward the late-season talent setting,
-          which means stats gradually take over as more real games are played.
-        </p>
-        <p>
-          Coach offense and defense ratings are passive boosts to offense and defense. Development is a passive composite boost.
-          A coach only affects seasons after his hire year, so a 2026 hire will not change 2022-2025 ratings.
-        </p>
-        <p>
-          Game predictions compare the home team's pass, rush, overall, and composite advantages against the away team, convert
-          the weighted gap into points, add home field, shrink extreme margins, cap the maximum margin, and round to the nearest
-          half-point spread.
-        </p>
+        <div className="panel-header">
+          <div>
+            <h3>Model Map</h3>
+            <p className="page-subtitle">A quick reference for what each part of the formula controls.</p>
+          </div>
+        </div>
+        <div className="definition-grid">
+          <DefinitionCard label="Team Stats">
+            PPA, success rate, points per drive, rush PPA, and pass PPA form the performance side of each rating.
+          </DefinitionCard>
+          <DefinitionCard label="Roster Talent">
+            Position groups are built from the roster, then blended with stats based on the talent weights and ramp weeks.
+          </DefinitionCard>
+          <DefinitionCard label="Coaching">
+            Offense and defense coach scores boost those sides of the ball. Development boosts composite only.
+          </DefinitionCard>
+          <DefinitionCard label="Timing">
+            Older stats fade by recency, and coach boosts only apply after the coach's hire year.
+          </DefinitionCard>
+          <DefinitionCard label="Spread">
+            Pass, rush, overall, and composite advantages become a projected margin, then shrink and cap rules shape the final line.
+          </DefinitionCard>
+        </div>
       </section>
     </>
+  );
+}
+
+function DefinitionCard({ label, children }: { label: string; children: string }) {
+  return (
+    <article className="definition-card">
+      <span>{label}</span>
+      <p>{children}</p>
+    </article>
   );
 }
 

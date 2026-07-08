@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPublicSupabase } from '@/lib/db/client';
 import { DEFAULT_CALIBRATION, DEFAULT_WEIGHTS, predictGame } from '@/lib/model/predict';
 import { projectMatchupScore, type TeamSeasonScoring } from '@/lib/model/score-projection';
+import {
+  calibrateWinProbability,
+  type CoachDevelopmentInput
+} from '@/lib/model/win-probability';
 import type { ModelCalibration, ModelWeights, Rating } from '@/lib/model/types';
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +28,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const supabase = getPublicSupabase();
-    const [ratingsResult, configResult] = await Promise.all([
+    const [ratingsResult, configResult, coachesResult, historyResult] = await Promise.all([
       supabase
         .from('ratings')
         .select('*')
@@ -36,11 +40,23 @@ export async function POST(request: NextRequest) {
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
         .limit(1)
-        .maybeSingle()
+        .maybeSingle(),
+      supabase
+        .from('coach_configs')
+        .select('team,hire_year,development_rating')
+        .in('team', [teamA, teamB]),
+      supabase
+        .from('backtest_games')
+        .select('model_home_margin,home_margin')
+        .gte('season', 2022)
+        .lte('season', 2025)
+        .limit(1000)
     ]);
 
     if (ratingsResult.error) throw ratingsResult.error;
     if (configResult.error) throw configResult.error;
+    if (coachesResult.error) throw coachesResult.error;
+    if (historyResult.error) throw historyResult.error;
 
     const ratings = new Map((ratingsResult.data ?? []).map(row => [String(row.team), mapRating(row)]));
     const ratingA = ratings.get(teamA);
@@ -59,7 +75,23 @@ export async function POST(request: NextRequest) {
     const teamAMargin = site === 'teamB'
       ? -prediction.modelHomeMargin
       : prediction.modelHomeMargin;
-    const teamAWinProbability = winProbability(teamAMargin);
+    const coaches = new Map(
+      (coachesResult.data ?? []).map(row => [
+        String(row.team),
+        mapCoachDevelopment(row)
+      ])
+    );
+    const winCalibration = calibrateWinProbability(
+      teamAMargin,
+      (historyResult.data ?? []).map(row => ({
+        modelHomeMargin: numberOrDefault(row.model_home_margin, Number.NaN),
+        actualHomeMargin: numberOrDefault(row.home_margin, Number.NaN)
+      })),
+      coaches.get(teamA) ?? null,
+      coaches.get(teamB) ?? null,
+      season
+    );
+    const teamAWinProbability = winCalibration.finalProbability;
     const seasonScoring = season < 2026
       ? await loadSeasonScoring(supabase, season, teamA, teamB)
       : null;
@@ -85,6 +117,7 @@ export async function POST(request: NextRequest) {
         teamBMargin: -teamAMargin,
         teamAWinProbability,
         teamBWinProbability: 1 - teamAWinProbability,
+        winCalibration,
         teamAScore: score.teamA,
         teamBScore: score.teamB,
         scoreProjection: score,
@@ -232,8 +265,14 @@ function numberOrNull(value: unknown) {
   return Number.isFinite(number) ? number : null;
 }
 
-function winProbability(margin: number) {
-  return 1 / (1 + Math.exp(-margin / 7));
+function mapCoachDevelopment(
+  row: Record<string, unknown>
+): CoachDevelopmentInput {
+  const hireYear = Number(row.hire_year);
+  return {
+    developmentRating: String(row.development_rating || 'Average'),
+    hireYear: Number.isFinite(hireYear) ? hireYear : null
+  };
 }
 
 function numberOrDefault(value: unknown, fallback: number) {

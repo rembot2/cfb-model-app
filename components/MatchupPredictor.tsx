@@ -42,6 +42,13 @@ type PredictionResponse = {
       mode: 'preseason' | 'full-season';
       explanation: string;
     };
+    winCalibration: {
+      spreadProbability: number;
+      empiricalProbability: number | null;
+      similarGames: number;
+      coachAdjustment: number;
+      finalProbability: number;
+    };
   };
   ratings?: Record<string, {
     composite: number;
@@ -194,7 +201,11 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
           value={`${teamA} ${prediction.teamAScore} - ${teamB} ${prediction.teamBScore}`}
           detail={`${prediction.scoreProjection.explanation} | Total ${fmt(prediction.scoreProjection.projectedTotal)}`}
         />
-        <Kpi label={`${teamA} Win %`} value={pct(prediction.teamAWinProbability * 100)} detail={`${teamB}: ${pct(prediction.teamBWinProbability * 100)}`} />
+        <Kpi
+          label={`${teamA} Win %`}
+          value={pct(prediction.teamAWinProbability * 100)}
+          detail={`${teamB}: ${pct(prediction.teamBWinProbability * 100)} | ${winProbabilityDetail(prediction.winCalibration)}`}
+        />
         <Kpi label="Rating Gap" value={fmt(prediction.weightedRatingGap)} detail={`Margin: ${fmt(Math.abs(prediction.teamAMargin))} pts`} />
       </section>
 
@@ -221,6 +232,15 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
             <div><dt>Scoring mode</dt><dd>{prediction.scoreProjection.mode === 'preseason' ? 'Preseason only' : 'Full season'}</dd></div>
             <div><dt>Projected total</dt><dd>{fmt(prediction.scoreProjection.projectedTotal)}</dd></div>
             <div><dt>Pace factor</dt><dd>{fmt(prediction.scoreProjection.paceFactor)}</dd></div>
+            <div><dt>Spread baseline</dt><dd>{pct(prediction.winCalibration.spreadProbability * 100)}</dd></div>
+            <div>
+              <dt>Historical calibration</dt>
+              <dd>{prediction.winCalibration.empiricalProbability === null
+                ? 'No sample'
+                : pct(prediction.winCalibration.empiricalProbability * 100)}</dd>
+            </div>
+            <div><dt>Similar spreads</dt><dd>{prediction.winCalibration.similarGames} games</dd></div>
+            <div><dt>Coach adjustment</dt><dd>{signedPctPoints(prediction.winCalibration.coachAdjustment)}</dd></div>
           </dl>
         </div>
       </section>
@@ -296,4 +316,17 @@ function pct(value: number) {
 function fmtWeight(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) ? `${(n * 100).toFixed(0)}%` : '-';
+}
+
+function winProbabilityDetail(
+  calibration: NonNullable<PredictionResponse['prediction']>['winCalibration']
+) {
+  const coach = signedPctPoints(calibration.coachAdjustment);
+  return `${calibration.similarGames} similar spreads, coach ${coach}`;
+}
+
+function signedPctPoints(value: number) {
+  const points = Number(value) * 100;
+  if (!Number.isFinite(points) || Math.abs(points) < 0.005) return '0.0 pts';
+  return `${points > 0 ? '+' : ''}${points.toFixed(1)} pts`;
 }

@@ -34,6 +34,14 @@ type PredictionResponse = {
     modelHomeMargin: number;
     homePassRate: number;
     awayPassRate: number;
+    scoreProjection: {
+      projectedTotal: number;
+      paceFactor: number;
+      teamAExpected: number;
+      teamBExpected: number;
+      mode: 'preseason' | 'full-season';
+      explanation: string;
+    };
   };
   ratings?: Record<string, {
     composite: number;
@@ -181,7 +189,11 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
     <div className="predictor-results">
       <section className="grid kpi-grid predictor-kpis">
         <Kpi label="Projected Spread" value={prediction.spread} detail={`${result.homeTeam} home field context`} />
-        <Kpi label="Projected Score" value={`${teamA} ${prediction.teamAScore} - ${teamB} ${prediction.teamBScore}`} detail="Score estimate based on model margin" />
+        <Kpi
+          label="Projected Score"
+          value={`${teamA} ${prediction.teamAScore} - ${teamB} ${prediction.teamBScore}`}
+          detail={`${prediction.scoreProjection.explanation} | Total ${fmt(prediction.scoreProjection.projectedTotal)}`}
+        />
         <Kpi label={`${teamA} Win %`} value={pct(prediction.teamAWinProbability * 100)} detail={`${teamB}: ${pct(prediction.teamBWinProbability * 100)}`} />
         <Kpi label="Rating Gap" value={fmt(prediction.weightedRatingGap)} detail={`Margin: ${fmt(Math.abs(prediction.teamAMargin))} pts`} />
       </section>
@@ -205,6 +217,11 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
           </div>
           <RatingCompare team={teamA} rating={ratingA} />
           <RatingCompare team={teamB} rating={ratingB} />
+          <dl className="score-context">
+            <div><dt>Scoring mode</dt><dd>{prediction.scoreProjection.mode === 'preseason' ? 'Preseason only' : 'Full season'}</dd></div>
+            <div><dt>Projected total</dt><dd>{fmt(prediction.scoreProjection.projectedTotal)}</dd></div>
+            <div><dt>Pace factor</dt><dd>{fmt(prediction.scoreProjection.paceFactor)}</dd></div>
+          </dl>
         </div>
       </section>
 

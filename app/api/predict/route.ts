@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPublicSupabase } from '@/lib/db/client';
 import { DEFAULT_CALIBRATION, DEFAULT_WEIGHTS, predictGame } from '@/lib/model/predict';
+import { projectMatchupScore, type TeamSeasonScoring } from '@/lib/model/score-projection';
 import type { ModelCalibration, ModelWeights, Rating } from '@/lib/model/types';
 
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,16 @@ export async function POST(request: NextRequest) {
       ? -prediction.modelHomeMargin
       : prediction.modelHomeMargin;
     const teamAWinProbability = winProbability(teamAMargin);
-    const score = projectedScore(teamAMargin);
+    const seasonScoring = season < 2026
+      ? await loadSeasonScoring(supabase, season, teamA, teamB)
+      : null;
+    const score = projectMatchupScore(ratingA, ratingB, {
+      season,
+      teamAMargin,
+      teamAStats: seasonScoring?.teams.get(teamA),
+      teamBStats: seasonScoring?.teams.get(teamB),
+      leaguePointsPerTeam: seasonScoring?.leaguePointsPerTeam
+    });
 
     return NextResponse.json({
       ok: true,
@@ -77,6 +87,7 @@ export async function POST(request: NextRequest) {
         teamBWinProbability: 1 - teamAWinProbability,
         teamAScore: score.teamA,
         teamBScore: score.teamB,
+        scoreProjection: score,
         spread: prediction.modelSpread
       },
       ratings: {
@@ -129,13 +140,96 @@ function normalizeSite(value: unknown): Site {
   return value === 'teamB' || value === 'neutral' ? value : 'teamA';
 }
 
-function projectedScore(teamAMargin: number) {
-  const total = 52;
-  const teamA = Math.max(0, Math.round(total / 2 + teamAMargin / 2));
-  return {
-    teamA,
-    teamB: Math.max(0, total - teamA)
-  };
+async function loadSeasonScoring(
+  supabase: ReturnType<typeof getPublicSupabase>,
+  season: number,
+  teamA: string,
+  teamB: string
+) {
+  const [gamesResult, statsResult] = await Promise.all([
+    supabase
+      .from('games')
+      .select('home_team,away_team,home_points,away_points')
+      .eq('season', season)
+      .not('home_points', 'is', null)
+      .not('away_points', 'is', null)
+      .limit(1000),
+    supabase
+      .from('team_game_stats')
+      .select('team,pts_per_drive_off,pts_per_drive_def,pass_rate_off,raw')
+      .eq('season', season)
+      .in('team', [teamA, teamB])
+      .limit(1000)
+  ]);
+
+  if (gamesResult.error) throw gamesResult.error;
+  if (statsResult.error) throw statsResult.error;
+
+  const games = gamesResult.data ?? [];
+  const totalPoints = games.reduce(
+    (sum, game) => sum + Number(game.home_points) + Number(game.away_points),
+    0
+  );
+  const leaguePointsPerTeam = games.length
+    ? totalPoints / (games.length * 2)
+    : null;
+  const teams = new Map<string, TeamSeasonScoring>();
+
+  for (const team of [teamA, teamB]) {
+    let pointsFor = 0;
+    let pointsAllowed = 0;
+    let gamesPlayed = 0;
+
+    for (const game of games) {
+      if (game.home_team === team) {
+        pointsFor += Number(game.home_points);
+        pointsAllowed += Number(game.away_points);
+        gamesPlayed += 1;
+      } else if (game.away_team === team) {
+        pointsFor += Number(game.away_points);
+        pointsAllowed += Number(game.home_points);
+        gamesPlayed += 1;
+      }
+    }
+
+    const teamStats = (statsResult.data ?? []).filter(row => row.team === team);
+    teams.set(team, {
+      games: gamesPlayed,
+      pointsFor: gamesPlayed ? pointsFor / gamesPlayed : null,
+      pointsAllowed: gamesPlayed ? pointsAllowed / gamesPlayed : null,
+      offensivePpd: average(teamStats.map(row => row.pts_per_drive_off)),
+      defensivePpd: average(teamStats.map(row => row.pts_per_drive_def)),
+      playsPerGame: average(teamStats.map(row => rawNumber(row.raw, 'offense', 'plays'))),
+      drivesPerGame: average(teamStats.map(row => rawNumber(row.raw, 'offense', 'drives'))),
+      passRate: average(teamStats.map(row => row.pass_rate_off))
+    });
+  }
+
+  return { leaguePointsPerTeam, teams };
+}
+
+function rawNumber(
+  raw: unknown,
+  section: string,
+  field: string
+) {
+  if (!raw || typeof raw !== 'object') return null;
+  const nested = (raw as Record<string, unknown>)[section];
+  if (!nested || typeof nested !== 'object') return null;
+  return numberOrNull((nested as Record<string, unknown>)[field]);
+}
+
+function average(values: unknown[]) {
+  const numbers = values
+    .map(numberOrNull)
+    .filter((value): value is number => value !== null);
+  if (!numbers.length) return null;
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
+}
+
+function numberOrNull(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function winProbability(margin: number) {

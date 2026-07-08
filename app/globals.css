@@ -851,6 +851,34 @@ textarea:focus {
   margin-top: 14px;
 }
 
+.score-context {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding-top: 14px;
+}
+
+.score-context div {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.score-context dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.score-context dd {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 950;
+  margin: 0;
+}
+
 .edge-row {
   display: grid;
   gap: 8px;

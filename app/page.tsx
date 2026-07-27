@@ -21,9 +21,9 @@ export default async function DashboardPage() {
       <header className="hero-panel">
         <div>
           <div className="eyebrow">Phillips-David Model</div>
-          <h2>College football ratings with a betting-grade feedback loop.</h2>
+          <h2>College football ratings, built to be explored.</h2>
           <p className="hero-copy">
-            Power ratings, matchup projections, optimizer results, and backtest validation built into one live model workspace.
+            Independent power ratings, matchup projections, and backtest research in one evolving college football model.
           </p>
           <div className="hero-actions">
             <Link className="button-link primary" href="/predict">Open Matchup Lab</Link>
@@ -39,7 +39,7 @@ export default async function DashboardPage() {
         <Kpi label="Top Team" value={String(top.team ?? '-')} detail={`Composite ${format(top.composite)}`} />
         <Kpi label="Vegas Edge Win %" value={pct(overall.vegas_edge_win_pct)} detail={record(overall)} />
         <Kpi label="Backtest Pick %" value={pct(overall.pick_pct)} detail={`Avg margin error ${format(overall.avg_margin_error)}`} />
-        <Kpi label="Best Final Score" value={format(best.final_score)} detail={weights(best)} />
+        <Kpi label="Model Score" value={format(best.final_score)} detail="Refined against historical results" />
       </section>
 
       <section className="grid dashboard-grid">
@@ -67,13 +67,13 @@ export default async function DashboardPage() {
       </section>
 
       <section className="feature-strip">
-        <Link href="/formula">
-          <span>Formula Studio</span>
-          <strong>Tune ratings, coach boosts, and prediction weights.</strong>
+        <Link href="/about">
+          <span>About The Model</span>
+          <strong>See the people, data, and thinking behind the PD Model.</strong>
         </Link>
-        <Link href="/optimizer">
-          <span>Optimizer</span>
-          <strong>Find the best-performing formula combinations.</strong>
+        <Link href="/predict">
+          <span>Matchup Lab</span>
+          <strong>Build a custom game projection with any two teams.</strong>
         </Link>
         <Link href="/backtest-results">
           <span>Validation</span>
@@ -109,9 +109,4 @@ function record(row: ReturnType<typeof summarizeBacktestGames>) {
   const plays = Number(row.vegas_edge_plays || 0);
   if (!plays) return 'No edge plays loaded';
   return `${row.vegas_edge_wins ?? 0}-${row.vegas_edge_losses ?? 0}-${row.vegas_edge_pushes ?? 0}`;
-}
-
-function weights(row: Record<string, unknown>) {
-  if (row.pass_weight === undefined) return 'Weights -';
-  return `P ${row.pass_weight} / R ${row.rush_weight} / O ${row.overall_weight} / C ${row.composite_weight}`;
 }

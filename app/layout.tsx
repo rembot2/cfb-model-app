@@ -4,12 +4,12 @@ import type { ReactNode } from 'react';
 
 export const metadata = {
   title: 'Phillips-David Model',
-  description: 'College football ratings, projections, and backtesting command center.'
+  description: 'Independent college football ratings, matchup projections, and backtest research.'
 };
 
 const navGroups = [
   {
-    label: 'Model',
+    label: 'Explore',
     links: [
       ['Command Center', '/'],
       ['Power Ratings', '/ratings'],
@@ -17,18 +17,16 @@ const navGroups = [
     ]
   },
   {
-    label: 'Engine Room',
-    links: [
-      ['Formula Studio', '/formula'],
-      ['Coach Inputs', '/coaches'],
-      ['Optimizer', '/optimizer']
-    ]
-  },
-  {
-    label: 'Validation',
+    label: 'Track Record',
     links: [
       ['Backtest Summary', '/backtest'],
       ['Game Results', '/backtest-results']
+    ]
+  },
+  {
+    label: 'The Project',
+    links: [
+      ['About Us', '/about']
     ]
   }
 ];
@@ -49,8 +47,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               </div>
             </div>
             <div className="sidebar-callout">
-              <span>Live Model</span>
-              <strong>Ratings, predictions, and validation in one workspace.</strong>
+              <span>Independent Project</span>
+              <strong>College football analytics built in public and refined all season.</strong>
             </div>
             <nav className="nav">
               {navGroups.map(group => (

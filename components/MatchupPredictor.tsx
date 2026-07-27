@@ -59,21 +59,6 @@ type PredictionResponse = {
     rushDef: number;
     passDef: number;
   }>;
-  formula?: {
-    name: string;
-    weights: {
-      pass: number;
-      rush: number;
-      overall: number;
-      composite: number;
-    };
-    calibration: {
-      pointsPerRating: number;
-      homeField: number;
-      marginShrink: number;
-      maxMargin: number;
-    };
-  };
 };
 
 type DisplayRating = NonNullable<PredictionResponse['ratings']>[string];
@@ -244,21 +229,6 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
           </dl>
         </div>
       </section>
-
-      <section className="panel predictor-formula-panel">
-          <div className="panel-header">
-            <h3>Formula Used</h3>
-            <span className="muted">{result.formula?.name || 'active'}</span>
-          </div>
-          <dl className="formula-mini">
-            <div><dt>Pass</dt><dd>{fmtWeight(result.formula?.weights.pass)}</dd></div>
-            <div><dt>Rush</dt><dd>{fmtWeight(result.formula?.weights.rush)}</dd></div>
-            <div><dt>Overall</dt><dd>{fmtWeight(result.formula?.weights.overall)}</dd></div>
-            <div><dt>Composite</dt><dd>{fmtWeight(result.formula?.weights.composite)}</dd></div>
-            <div><dt>Home Field</dt><dd>{fmt(result.formula?.calibration.homeField)}</dd></div>
-            <div><dt>Shrink</dt><dd>{fmt(result.formula?.calibration.marginShrink)}</dd></div>
-          </dl>
-      </section>
     </div>
   );
 }
@@ -311,11 +281,6 @@ function fmt(value: unknown) {
 
 function pct(value: number) {
   return `${fmt(value)}%`;
-}
-
-function fmtWeight(value: unknown) {
-  const n = Number(value);
-  return Number.isFinite(n) ? `${(n * 100).toFixed(0)}%` : '-';
 }
 
 function winProbabilityDetail(

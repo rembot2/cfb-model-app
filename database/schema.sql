@@ -250,9 +250,6 @@ create table if not exists public.backtest_games (
   pick_result text,
   synced_at timestamptz not null default now(),
   unique (season, week, home_team, away_team)
-  ALTER TABLE backtest_games 
-  ADD COLUMN IF NOT EXISTS ml_home_margin FLOAT,
-  ADD COLUMN IF NOT EXISTS ml_win_prob_home FLOAT;
 );
 
 create table if not exists public.backtest_summary (

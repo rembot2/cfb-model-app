@@ -9,7 +9,7 @@ const pillars = [
   {
     number: '01',
     title: 'Roster Talent',
-    text: 'Depth charts matter. The model builds team-level position groups from player talent and gives more influence to the players most likely to shape Saturdays.'
+    text: 'Depth charts matter. The model builds team-level position group ratings from player talent and gives more influence to the players most likely to shape Saturdays.'
   },
   {
     number: '02',
@@ -18,7 +18,7 @@ const pillars = [
   },
   {
     number: '03',
-    title: 'Coaching Context',
+    title: 'Coaching Analysis',
     text: 'Coaching is treated as context, not magic. The model accounts for offensive and defensive influence, development, and the timing of a coach’s tenure.'
   }
 ];
@@ -31,10 +31,10 @@ export default function AboutPage() {
           <div className="eyebrow">About Us</div>
           <h2>What is the PD Model?</h2>
           <p className="about-lead">
-            The Phillips-David Model is an independent college football analytics project built by two 18-year-olds heading into college. What started as a shared interest in the sport has become a hands-on project we build, test, and improve in our spare time.
+            The Phillips-David Model is an independent college football analytics project built by two 18-year-old college students. We both have a passion for college football and decided to put that to use by creating our own model in our spare time.
           </p>
           <p>
-            Our goal is straightforward: create a useful way to compare teams, explore matchups, and track how the model performs as the season unfolds.
+            Our goal is to create an automated way to predict season outcomes using advanced data.
           </p>
         </div>
         <div className="about-brand-mark" aria-hidden="true">
@@ -45,10 +45,10 @@ export default function AboutPage() {
       <section className="about-intro-band" aria-labelledby="approach-heading">
         <div>
           <span className="eyebrow">Our Approach</span>
-          <h3 id="approach-heading">Three inputs, one evolving view of each team.</h3>
+          <h3 id="approach-heading">Three inputs allow ratings to evolve</h3>
         </div>
         <p>
-          College football changes too quickly for one number to tell the whole story. The PD Model blends roster talent, in-season statistics, and coaching context, then tests those outputs against past results to keep the work grounded.
+          College football changes too quickly for one number to tell the whole story. The PD Model blends evolving roster talent, in-season statistics, and coaching context, providing a multi-layered rating for each team.
         </p>
       </section>
 
@@ -63,20 +63,11 @@ export default function AboutPage() {
       </section>
 
       <section className="about-detail-grid">
-        <article className="about-detail-block">
-          <span className="eyebrow">Player Ratings</span>
-          <h3>Starting with talent, then putting it on one scale.</h3>
-          <p>
-            Player talent data begins with On3 roster ratings. We normalize and adjust that information so it can sit on the same scale as the rest of the model, then use position-specific depth weighting instead of treating every player on a roster the same.
-          </p>
-          <small>On3 is a data source only. The PD Model is independent and is not affiliated with or endorsed by On3.</small>
-        </article>
-
         <article className="about-detail-block about-detail-accent">
           <span className="eyebrow">Built To Be Checked</span>
           <h3>Predictions should have a track record.</h3>
           <p>
-            The model keeps its historical backtests visible so visitors can review game-by-game results, margin error, and how the model compared with the market. We care about making the model better, not pretending it is perfect.
+            The model keeps its historical backtests visible so visitors can review game-by-game results, error margin, and how the model compared with Vegas. We care about making the model better, not pretending it is perfect.
           </p>
           <Link className="text-link" href="/backtest">Explore the backtest</Link>
         </article>

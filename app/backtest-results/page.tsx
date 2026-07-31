@@ -31,6 +31,7 @@ export default async function BacktestResultsPage({ searchParams }: { searchPara
         <SummaryTile label="Winner Picks" value={pct(modelCorrect, data.games.length)} detail={`${modelCorrect} correct`} />
         <SummaryTile label="Vegas Edge" value={pct(vegasWins, vegasWins + vegasLosses)} detail={`${vegasWins}-${vegasLosses}`} />
         <SummaryTile label="Avg Error" value={avg(data.games.map(row => Number(row.margin_error)))} detail="Projected vs actual margin" />
+        <SummaryTile label="ML Accuracy" value={pct(data.games.filter(row => row.ml_home_margin != null && ((Number(row.ml_home_margin) > 0) === (Number(row.home_margin) > 0))).length, data.games.filter(row => row.ml_home_margin != null).length)} detail="ML winner picks" />
       </section>
 
       <section className="panel table-panel">
@@ -63,7 +64,10 @@ export default async function BacktestResultsPage({ searchParams }: { searchPara
             { label: 'Actual Win Margin', className: 'num', render: row => fmt(row.actual_win_margin) },
             { label: 'Margin Error', className: 'num', render: row => fmt(row.margin_error) },
             { label: 'Error Bucket', render: row => String(row.error_bucket ?? '') },
-            { label: 'Winner Pick', render: row => <Pill value={String(row.pick_result ?? '')} /> }
+            { label: 'Winner Pick', render: row => <Pill value={String(row.pick_result ?? '')} /> },
+            { label: 'ML Margin', className: 'num', render: row => row.ml_home_margin != null ? fmt(row.ml_home_margin) : '-' },
+            { label: 'ML Win Prob', className: 'num', render: row => row.ml_win_prob_home != null ? `${fmt(Number(row.ml_win_prob_home) * 100)}%` : '-' },
+            { label: 'ML Pick', render: row => row.ml_home_margin != null ? <Pill value={Number(row.ml_home_margin) > 0 === Number(row.home_margin) > 0 ? 'CORRECT' : 'WRONG'} /> : null }
           ]}
         />
       </section>

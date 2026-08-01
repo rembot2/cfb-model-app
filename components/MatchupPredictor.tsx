@@ -198,7 +198,7 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
         <Kpi
           label={`${teamA} Win %`}
           value={prediction.mlWinProbHome !== null
-            ? pct((site === 'teamB' ? 1 - prediction.mlWinProbHome : prediction.mlWinProbHome) * 100)
+            ? pct((result.homeTeam === teamB ? 1 - prediction.mlWinProbHome : prediction.mlWinProbHome) * 100)
             : pct(prediction.teamAWinProbability * 100)}
           detail={prediction.mlWinProbHome !== null
             ? `ML model · Formula: ${pct(prediction.teamAWinProbability * 100)}`

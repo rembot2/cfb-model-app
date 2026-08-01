@@ -66,7 +66,7 @@ export default async function BacktestResultsPage({ searchParams }: { searchPara
             { label: 'Winner Pick', render: row => <Pill value={String(row.pick_result ?? '')} /> },
             { label: 'ML Margin', className: 'num', render: row => row['ml_home_margin'] != null ? fmt(row['ml_home_margin']) : '-' },
             { label: 'ML Win Prob', className: 'num', render: row => row['ml_win_prob_home'] != null ? `${fmt(Number(row['ml_win_prob_home']) * 100)}%` : '-' },
-            { label: 'ML Pick', render: row => row['ml_home_margin'] != null ? <Pill value={(Number(row['ml_home_margin']) > 0) === (Number(row['home_margin']) > 0) ? 'CORRECT' : 'WRONG'} /> : null }          ]}
+            { label: 'ML Pick', render: row => <Pill value={row['ml_home_margin'] != null ? ((Number(row['ml_home_margin']) > 0) === (Number(row['home_margin']) > 0) ? 'CORRECT' : 'WRONG') : ''} /> }
         />
       </section>
     </>

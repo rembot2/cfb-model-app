@@ -10,6 +10,8 @@ export default async function BacktestResultsPage({ searchParams }: { searchPara
   const vegasWins = data.games.filter(row => String(row.model_vegas_result ?? '').toUpperCase() === 'WIN').length;
   const vegasLosses = data.games.filter(row => String(row.model_vegas_result ?? '').toUpperCase() === 'LOSS').length;
   const modelCorrect = data.games.filter(row => String(row.pick_result ?? '').toUpperCase() === 'CORRECT').length;
+  const mlGames = data.games.filter(row => row['ml_home_margin'] != null);
+  const mlCorrect = mlGames.filter(row => (Number(row['ml_home_margin']) > 0) === (Number(row['home_margin']) > 0)).length;
 
   return (
     <>
@@ -31,7 +33,8 @@ export default async function BacktestResultsPage({ searchParams }: { searchPara
         <SummaryTile label="Winner Picks" value={pct(modelCorrect, data.games.length)} detail={`${modelCorrect} correct`} />
         <SummaryTile label="Vegas Edge" value={pct(vegasWins, vegasWins + vegasLosses)} detail={`${vegasWins}-${vegasLosses}`} />
         <SummaryTile label="Avg Error" value={avg(data.games.map(row => Number(row.margin_error)))} detail="Projected vs actual margin" />
-        <SummaryTile label="ML Accuracy" value={pct(data.games.filter(row => row['ml_home_margin'] != null && ((Number(row['ml_home_margin']) > 0) === (Number(row['home_margin']) > 0))).length, data.games.filter(row => row['ml_home_margin'] != null).length)} detail="ML winner picks" />      </section>
+        <SummaryTile label="ML Accuracy" value={pct(mlCorrect, mlGames.length)} detail="ML winner picks" />
+      </section>
 
       <section className="panel table-panel">
         <div className="panel-header">
@@ -66,7 +69,8 @@ export default async function BacktestResultsPage({ searchParams }: { searchPara
             { label: 'Winner Pick', render: row => <Pill value={String(row.pick_result ?? '')} /> },
             { label: 'ML Margin', className: 'num', render: row => row['ml_home_margin'] != null ? fmt(row['ml_home_margin']) : '-' },
             { label: 'ML Win Prob', className: 'num', render: row => row['ml_win_prob_home'] != null ? `${fmt(Number(row['ml_win_prob_home']) * 100)}%` : '-' },
-            { label: 'ML Pick', render: row => <Pill value={row['ml_home_margin'] != null ? ((Number(row['ml_home_margin']) > 0) === (Number(row['home_margin']) > 0) ? 'CORRECT' : 'WRONG') : ''} /> }
+            { label: 'ML Pick', render: row => <Pill value={row['ml_home_margin'] != null ? ((Number(row['ml_home_margin']) > 0) === (Number(row['home_margin']) > 0) ? 'CORRECT' : 'WRONG') : ''} /> },
+          ]}
         />
       </section>
     </>

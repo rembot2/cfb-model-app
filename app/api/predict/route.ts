@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const supabase = getPublicSupabase();
-    const [ratingsResult, configResult, coachesResult, historyResult] = await Promise.all([
+    const [ratingsResult, configResult, coachesResult, historyResult, mlResult] = await Promise.all([
       supabase
         .from('ratings')
         .select('*')
@@ -50,13 +50,26 @@ export async function POST(request: NextRequest) {
         .select('model_home_margin,home_margin')
         .gte('season', 2022)
         .lte('season', 2025)
-        .limit(1000)
+        .limit(1000),
+      supabase
+        .from('predictions')
+        .select('ml_home_margin,ml_win_prob_home')
+        .eq('season', season)
+        .eq('home_team', site === 'teamB' ? teamB : teamA)
+        .eq('away_team', site === 'teamB' ? teamA : teamB)
+        .maybeSingle()
+    ]);
     ]);
 
     if (ratingsResult.error) throw ratingsResult.error;
     if (configResult.error) throw configResult.error;
     if (coachesResult.error) throw coachesResult.error;
-    if (historyResult.error) throw historyResult.error;
+    if (mlResult.error) throw mlResult.error;
+    const mlHomeMargin = mlResult.data?.ml_home_margin ?? null;
+    const mlWinProbHome = mlResult.data?.ml_win_prob_home ?? null;
+    const mlTeamAMargin = mlHomeMargin !== null
+      ? (site === 'teamB' ? -Number(mlHomeMargin) : Number(mlHomeMargin))
+      : null;
 
     const ratings = new Map((ratingsResult.data ?? []).map(row => [String(row.team), mapRating(row)]));
     const ratingA = ratings.get(teamA);
@@ -121,7 +134,15 @@ export async function POST(request: NextRequest) {
         teamAScore: score.teamA,
         teamBScore: score.teamB,
         scoreProjection: score,
-        spread: prediction.modelSpread
+        spread: prediction.modelSpread,
+        mlHomeMargin: mlHomeMargin,
+        mlTeamAMargin: mlTeamAMargin,
+        mlWinProbHome: mlWinProbHome,
+        mlSpread: mlTeamAMargin !== null
+          ? mlTeamAMargin === 0
+            ? "Pick'em"
+            : `${mlTeamAMargin > 0 ? teamA : teamB} -${Math.abs(mlTeamAMargin).toFixed(1)}`
+          : null
       },
       ratings: {
         [teamA]: ratingA,

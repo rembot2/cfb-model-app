@@ -59,8 +59,7 @@ export async function POST(request: NextRequest) {
         .eq('away_team', site === 'teamB' ? teamA : teamB)
         .maybeSingle()
     ]);
-    ]);
-
+    
     if (ratingsResult.error) throw ratingsResult.error;
     if (configResult.error) throw configResult.error;
     if (coachesResult.error) throw coachesResult.error;

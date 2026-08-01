@@ -17,6 +17,9 @@ type PredictionResponse = {
   homeTeam?: string;
   awayTeam?: string;
   prediction?: {
+    mlSpread: string | null;
+    mlTeamAMargin: number | null;
+    mlWinProbHome: number | null;
     spread: string;
     predictedWinner: string;
     predictedMargin: number;
@@ -180,7 +183,13 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
   return (
     <div className="predictor-results">
       <section className="grid kpi-grid predictor-kpis">
-        <Kpi label="Projected Spread" value={prediction.spread} detail={`${result.homeTeam} home field context`} />
+        <Kpi
+          label="Projected Spread"
+          value={prediction.mlSpread ?? prediction.spread}
+          detail={prediction.mlSpread
+            ? `Formula: ${prediction.spread} · ${result.homeTeam} home`
+            : `${result.homeTeam} home field context`}
+        />
         <Kpi
           label="Projected Score"
           value={`${teamA} ${prediction.teamAScore} - ${teamB} ${prediction.teamBScore}`}
@@ -188,8 +197,12 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
         />
         <Kpi
           label={`${teamA} Win %`}
-          value={pct(prediction.teamAWinProbability * 100)}
-          detail={`${teamB}: ${pct(prediction.teamBWinProbability * 100)} | ${winProbabilityDetail(prediction.winCalibration)}`}
+          value={prediction.mlWinProbHome !== null
+            ? pct((site === 'teamB' ? 1 - prediction.mlWinProbHome : prediction.mlWinProbHome) * 100)
+            : pct(prediction.teamAWinProbability * 100)}
+          detail={prediction.mlWinProbHome !== null
+            ? `ML model · Formula: ${pct(prediction.teamAWinProbability * 100)}`
+            : `${teamB}: ${pct(prediction.teamBWinProbability * 100)} | ${winProbabilityDetail(prediction.winCalibration)}`}
         />
         <Kpi label="Rating Gap" value={fmt(prediction.weightedRatingGap)} detail={`Margin: ${fmt(Math.abs(prediction.teamAMargin))} pts`} />
       </section>

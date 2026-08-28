@@ -90,6 +90,11 @@ export type RatingOptions = {
   performanceTrust?: number;
   coaches?: RawCoachConfig[];
   coachInfluence?: CoachInfluence;
+  returningProduction?: Record<string, {
+  ret_prod: number;
+  off_ret:  number;
+  def_ret:  number;
+  }>;
 };
 
 type RawRating = {
@@ -180,7 +185,23 @@ export function calculateTeamRatings(
       options.talentRampWeeks ?? 8
     );
     const isPreseasonProjection = season >= 2026 && ratingWeek <= 0;
-    const performanceSplit = isPreseasonProjection ? 0 : 1 - positionTalentSplit;
+
+    // RETURNING PRODUCTION ADJUSTMENT
+    // For preseason, performance split is driven by how much
+    // production is returning from last season.
+    // For in-season, use the normal talent ramp split.
+    const rpData = options.returningProduction?.[team]
+    const offRpData = rpData?.off_ret ?? rpData?.ret_prod ?? null
+    const defRpData = rpData?.def_ret ?? rpData?.ret_prod ?? null
+    const performanceSplit = isPreseasonProjection
+      ? getPreseasonPerformanceSplit(rpData?.ret_prod ?? null)
+      : 1 - positionTalentSplit
+    const offPerfSplit = isPreseasonProjection
+      ? getPreseasonPerformanceSplit(offRpData)
+      : performanceSplit
+    const defPerfSplit = isPreseasonProjection
+      ? getPreseasonPerformanceSplit(defRpData)
+      : performanceSplit
     const positionRatings = positions || null;
     const fallbackTalentRating = zToRating(talentZ[team] || 0);
     const rushOffTalent = positionRatings
@@ -200,7 +221,7 @@ export function calculateTeamRatings(
     const rushOffBase = blendTalentWithPerformance(
       rushOffTalent,
       zToRating(zRushOff[index]),
-      performanceSplit,
+      offPerfSplit,
       hasPositionTalent,
       season,
       ratingWeek
@@ -208,7 +229,7 @@ export function calculateTeamRatings(
     const passOffBase = blendTalentWithPerformance(
       passOffTalent,
       zToRating(zPassOff[index]),
-      performanceSplit,
+      offPerfSplit,
       hasPositionTalent,
       season,
       ratingWeek
@@ -216,7 +237,7 @@ export function calculateTeamRatings(
     const rushDefBase = blendTalentWithPerformance(
       rushDefTalent,
       zToRating(zRushDef[index]),
-      performanceSplit,
+      defPerfSplit,
       hasPositionTalent,
       season,
       ratingWeek
@@ -224,12 +245,11 @@ export function calculateTeamRatings(
     const passDefBase = blendTalentWithPerformance(
       passDefTalent,
       zToRating(zPassDef[index]),
-      performanceSplit,
+      defPerfSplit,
       hasPositionTalent,
       season,
       ratingWeek
     );
-
     const coachActive = isCoachActiveForSeason(coach, season);
     const offenseCoachBoost = coachActive ? coachScaleBoost(coach.offenseRating, coachInfluence.offenseBoost) : 0;
     const defenseCoachBoost = coachActive ? coachScaleBoost(coach.defenseRating, coachInfluence.defenseBoost) : 0;
@@ -653,6 +673,27 @@ function blendTalentWithPerformance(
 function getPerformanceAdjustmentCap(season: number, ratingWeek: number, performanceSplit: number) {
   if (season >= 2026 && ratingWeek <= 0) return 2.5;
   return Math.max(2.5, 10 * clamp(performanceSplit, 0, 1));
+}
+
+// ============================================================
+// RETURNING PRODUCTION PERFORMANCE TRUST MULTIPLIER
+// Controls how much last season's stats are trusted preseason
+// High RP → trust performance more (players returning)
+// Low RP  → trust talent more (new players, ignore last year)
+//
+// At ret_prod = 0.50 (national average) → baseline ~0.05
+// At ret_prod = 0.70+ → performance split opens to ~0.15
+// At ret_prod = 0.30- → performance split near 0
+// ============================================================
+function getPreseasonPerformanceSplit(
+  retProd: number | null | undefined
+): number {
+  if (retProd === null || retProd === undefined) return 0.05
+  const rp = Math.max(0.0, Math.min(1.0, retProd))
+  if (rp < 0.35) return 0.0
+  if (rp < 0.50) return ((rp - 0.35) / 0.15) * 0.05
+  if (rp < 0.65) return 0.05 + ((rp - 0.50) / 0.15) * 0.05
+  return 0.10 + Math.min((rp - 0.65) / 0.15, 1.0) * 0.08
 }
 
 function normalizeRate(value: unknown) {

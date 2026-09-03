@@ -187,21 +187,15 @@ export function calculateTeamRatings(
     const isPreseasonProjection = season >= 2026 && ratingWeek <= 0;
 
     // RETURNING PRODUCTION ADJUSTMENT
-    // For preseason, performance split is driven by how much
-    // production is returning from last season.
-    // For in-season, use the normal talent ramp split.
-    const rpData = options.returningProduction?.[team]
-    const offRpData = rpData?.off_ret ?? rpData?.ret_prod ?? null
-    const defRpData = rpData?.def_ret ?? rpData?.ret_prod ?? null
-    const performanceSplit = isPreseasonProjection
-      ? getPreseasonPerformanceSplit(rpData?.ret_prod ?? null)
-      : 1 - positionTalentSplit
-    const offPerfSplit = isPreseasonProjection
-      ? getPreseasonPerformanceSplit(offRpData)
-      : performanceSplit
-    const defPerfSplit = isPreseasonProjection
-      ? getPreseasonPerformanceSplit(defRpData)
-      : performanceSplit
+    // rpData drives a post-blend rating adjustment for preseason projections.
+    // performanceSplit and offPerfSplit/defPerfSplit remain as before —
+    // the RP effect is applied after the talent blend via getPreseasonRpAdjustment.
+    const rpData    = options.returningProduction?.[team]
+    const offRpData = rpData?.off_ret  ?? rpData?.ret_prod ?? null
+    const defRpData = rpData?.def_ret  ?? rpData?.ret_prod ?? null
+    const performanceSplit = isPreseasonProjection ? 0 : 1 - positionTalentSplit
+    const offPerfSplit     = performanceSplit
+    const defPerfSplit     = performanceSplit
     const positionRatings = positions || null;
     const fallbackTalentRating = zToRating(talentZ[team] || 0);
     const rushOffTalent = positionRatings
@@ -259,10 +253,23 @@ export function calculateTeamRatings(
     const rushDef = scaleFinalRating(rushDefBase + defenseCoachBoost);
     const passDef = scaleFinalRating(passDefBase + defenseCoachBoost);
     const schemePassRate = normalizeRate(rawRatings[team].passRate);
-    const offRating = isPreseasonProjection
+    const offRatingRaw = isPreseasonProjection
       ? round2(rushOff * (1 - schemePassRate) + passOff * schemePassRate)
       : round2((rushOff + passOff) / 2);
-    const defRating = round2((rushDef + passDef) / 2);
+    const defRatingRaw = round2((rushDef + passDef) / 2);
+
+    // Apply returning production adjustment for preseason projections
+    // This nudges ratings toward or away from league mean based on
+    // how much production is returning from the previous season
+    const offRpAdj  = isPreseasonProjection
+      ? getPreseasonRpAdjustment(offRatingRaw, offRpData)
+      : 0
+    const defRpAdj  = isPreseasonProjection
+      ? getPreseasonRpAdjustment(defRatingRaw, defRpData)
+      : 0
+
+    const offRating = round2(clamp(offRatingRaw + offRpAdj, 0, 100));
+    const defRating = round2(clamp(defRatingRaw + defRpAdj, 0, 100));
     const composite = scaleFinalRating((offRating + defRating) / 2 + developmentBoost);
 
     return {
@@ -685,15 +692,49 @@ function getPerformanceAdjustmentCap(season: number, ratingWeek: number, perform
 // At ret_prod = 0.70+ → performance split opens to ~0.15
 // At ret_prod = 0.30- → performance split near 0
 // ============================================================
-function getPreseasonPerformanceSplit(
+// ============================================================
+// RETURNING PRODUCTION RATING SCALE FACTOR
+// Rather than adjusting performanceSplit (too small to matter),
+// we apply a direct scale factor to the final preseason rating.
+// High RP → team is who their talent says they are
+// Low RP  → new roster, pull toward league mean (85.0)
+//
+// Scale is applied AFTER the talent blend, as a nudge toward
+// or away from the league average composite.
+//
+// Notre Dame  72% → factor = +1.8 pts above talent anchor
+// Ole Miss    61% → factor = +0.4 pts (slight boost)
+// Average     50% → factor =  0.0 pts (no change)
+// Alabama     48% → factor = -0.3 pts (slight pull)
+// Vanderbilt  44% → factor = -0.9 pts (meaningful pull)
+// So. Miss    22% → factor = -3.5 pts (strong pull toward mean)
+// ============================================================
+const RP_LEAGUE_MEAN = 85.0   // approximate FBS composite mean
+const RP_MAX_BOOST   =  2.5   // max pts added for highest RP teams
+const RP_MAX_PENALTY = -4.0   // max pts removed for lowest RP teams
+
+function getPreseasonRpAdjustment(
+  currentRating: number,
   retProd: number | null | undefined
 ): number {
-  if (retProd === null || retProd === undefined) return 0.05
+  if (retProd === null || retProd === undefined) return 0.0
+
   const rp = Math.max(0.0, Math.min(1.0, retProd))
-  if (rp < 0.35) return 0.0
-  if (rp < 0.50) return ((rp - 0.35) / 0.15) * 0.05
-  if (rp < 0.65) return 0.05 + ((rp - 0.50) / 0.15) * 0.05
-  return 0.10 + Math.min((rp - 0.65) / 0.15, 1.0) * 0.08
+
+  // How far is this team from the league mean?
+  const distanceFromMean = currentRating - RP_LEAGUE_MEAN
+
+  // Above average RP (> 0.50): small boost, scaled by how far above 50%
+  if (rp >= 0.50) {
+    const boost = ((rp - 0.50) / 0.50) * RP_MAX_BOOST
+    return Math.min(boost, RP_MAX_BOOST)
+  }
+
+  // Below average RP (< 0.50): pull toward mean, stronger for worse RP
+  // Teams far above mean get pulled more (they have more to lose)
+  const pullStrength = ((0.50 - rp) / 0.50)   // 0.0 to 1.0
+  const penalty = pullStrength * RP_MAX_PENALTY * Math.max(0, distanceFromMean / 10.0)
+  return Math.max(penalty, RP_MAX_PENALTY)
 }
 
 function normalizeRate(value: unknown) {

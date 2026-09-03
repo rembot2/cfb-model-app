@@ -53,20 +53,21 @@ export async function runModelUpdate(options: UpdateOptions) {
 
   try {
     const result: Partial<Record<UpdateStep, unknown>> = {};
-    if (steps.has('teams')) result.teams = await fetchTeams(options.season);
-    if (steps.has('games')) result.games = await fetchGames(options.season);
-    if (steps.has('stats')) result.stats = await fetchTeamGameStats(options.season);
-    if (steps.has('coaches')) result.coaches = await fetchCoaches(options.season);
+
+    if (steps.has('teams'))       result.teams       = await fetchTeams(options.season);
+    if (steps.has('games'))       result.games       = await fetchGames(options.season);
+    if (steps.has('stats'))       result.stats       = await fetchTeamGameStats(options.season);
+    if (steps.has('coaches'))     result.coaches     = await fetchCoaches(options.season);
     if (steps.has('rosters')) {
       result.rosters = await fetchRosters(options.season, {
         limit: options.rosterLimit,
         offset: options.rosterOffset ?? 0
       });
     }
-    if (steps.has('ratings')) result.ratings = await calculateRatings(options.season);
+    if (steps.has('ratings'))     result.ratings     = await calculateRatings(options.season);
     if (steps.has('predictions')) result.predictions = await generatePredictions(options.season);
-    if (steps.has('optimizer')) result.optimizer = await runOptimizerThroughSeason(await getLatestCompletedSeason() ?? options.season);
-    if (steps.has('backtest')) result.backtest = await runBacktest(options.season, options.optimizeBacktest !== false);
+    if (steps.has('optimizer'))   result.optimizer   = await runOptimizerThroughSeason(await getLatestCompletedSeason() ?? options.season);
+    if (steps.has('backtest'))    result.backtest    = await runBacktest(options.season, options.optimizeBacktest !== false);
 
     await supabase
       .from('job_runs')
@@ -103,7 +104,6 @@ async function fetchTeams(season: number) {
   const supabase = getServiceSupabase();
   const cfbd = new CfbdClient();
   const teams = await cfbd.getTeams(season);
-
   const rows = teams
     .filter((team) => team?.school)
     .map((team) => ({
@@ -113,7 +113,6 @@ async function fetchTeams(season: number) {
       is_power: ['SEC', 'Big Ten', 'Big 12', 'ACC'].includes(team.conference),
       updated_at: new Date().toISOString()
     }));
-
   await upsertRows(supabase, 'teams', rows, 'school');
   return { season, status: 'success', count: rows.length };
 }
@@ -123,11 +122,13 @@ async function fetchCoaches(season: number) {
   const cfbd = new CfbdClient();
   let coaches = [] as Awaited<ReturnType<CfbdClient['getCoaches']>>;
   let sourceSeason = season;
+
   try {
     coaches = await cfbd.getCoaches(season);
   } catch (error) {
     if (season <= 2022) throw error;
   }
+
   if (!coaches.length && season > 2022) {
     sourceSeason = season - 1;
     coaches = await cfbd.getCoaches(sourceSeason);
@@ -137,6 +138,7 @@ async function fetchCoaches(season: number) {
     supabase.from('coach_configs').select('*'),
     supabase.from('teams').select('school').order('school', { ascending: true })
   ]);
+
   if (existingError) throw existingError;
   if (teamError) throw teamError;
 
@@ -145,10 +147,12 @@ async function fetchCoaches(season: number) {
 
   for (const coach of coaches) {
     const seasons = Array.isArray(coach.seasons) ? coach.seasons : [];
-    const targetSeason = seasons.find((row) => Number(row.year ?? row.season) === sourceSeason) ||
+    const targetSeason =
+      seasons.find((row) => Number(row.year ?? row.season) === sourceSeason) ||
       seasons
         .filter((row) => Number(row.year ?? row.season) <= sourceSeason)
         .sort((a, b) => Number(b.year ?? b.season) - Number(a.year ?? a.season))[0];
+
     const team = String(targetSeason?.school || '').trim();
     if (!team) continue;
 
@@ -156,6 +160,7 @@ async function fetchCoaches(season: number) {
       .filter((row) => String(row.school || '').trim() === team)
       .map((row) => Number(row.year ?? row.season))
       .filter(Number.isFinite);
+
     const dateYear = coach.hireDate ? new Date(coach.hireDate).getUTCFullYear() : NaN;
     const hireYear = teamYears.length ? Math.min(...teamYears) : Number.isFinite(dateYear) ? dateYear : null;
     const coachName = `${coach.firstName || ''} ${coach.lastName || ''}`.trim();
@@ -167,6 +172,7 @@ async function fetchCoaches(season: number) {
     const prior = existing.get(team);
     const fromCfbd = imported.get(team);
     const lockIdentity = prior?.source === 'manual' && Boolean(prior?.coach_name);
+
     return {
       team,
       coach_name: lockIdentity ? prior.coach_name : fromCfbd?.coachName || prior?.coach_name || null,
@@ -202,7 +208,6 @@ async function fetchGames(season: number) {
   const rows = games
     .filter((game) => game.homeTeam && game.awayTeam)
     .map((game) => mapGameRow(game, maxRegularWeek));
-
   await upsertRows(supabase, 'games', rows, 'cfbd_game_id');
   return { season, status: 'success', count: rows.length };
 }
@@ -245,14 +250,16 @@ async function fetchRosters(
     .order('team', { ascending: true });
 
   if (error) throw error;
+
   if (!sources?.length) {
     return { season, status: 'skipped', reason: 'No enabled On3 roster sources found', count: 0 };
   }
 
   const offset = Math.max(0, options.offset ?? 0);
-  const selectedSources = Number.isFinite(Number(options.limit)) && Number(options.limit) > 0
-    ? sources.slice(offset, offset + Number(options.limit))
-    : sources.slice(offset);
+  const selectedSources =
+    Number.isFinite(Number(options.limit)) && Number(options.limit) > 0
+      ? sources.slice(offset, offset + Number(options.limit))
+      : sources.slice(offset);
 
   let playerCount = 0;
   for (const source of selectedSources) {
@@ -267,7 +274,6 @@ async function fetchRosters(
       raw: player,
       updated_at: new Date().toISOString()
     }));
-
     if (!rows.length) continue;
     await upsertRows(supabase, 'roster_players', rows, 'season,team,player_name,position');
     playerCount += rows.length;
@@ -300,7 +306,6 @@ async function calculateRatings(season: number) {
       .order('model_week', { ascending: true, nullsFirst: false })
       .order('week', { ascending: true })
       .range(from, from + pageSize - 1);
-
     if (error) throw error;
     statRows.push(...(data || []));
     if (!data || data.length < pageSize) break;
@@ -314,7 +319,6 @@ async function calculateRatings(season: number) {
       .order('team', { ascending: true })
       .order('player_name', { ascending: true })
       .range(from, from + pageSize - 1);
-
     if (error) throw error;
     rosterRows.push(...(data || []));
     if (!data || data.length < pageSize) break;
@@ -341,9 +345,9 @@ async function calculateRatings(season: number) {
   }
 
   const activeConfig = await loadActiveModelConfig();
-
   const talentScores = buildTalentScores(rosterRows, season);
   const coachDiagnostics = buildCoachDiagnostics(coachRows || [], talentScores, activeConfig.coachInfluence);
+
   const ratings = calculateTeamRatings(
     statRows.map(mapRawStatRow),
     talentScores,
@@ -364,11 +368,13 @@ async function calculateRatings(season: number) {
       returningProduction
     }
   );
+
   const { data: existingRatings, error: existingRatingsError } = await supabase
     .from('ratings')
     .select('team,off_rating,def_rating,composite')
     .eq('season', season);
   if (existingRatingsError) throw existingRatingsError;
+
   const existingRatingMap = new Map((existingRatings || []).map((row) => [String(row.team), row]));
 
   const rows = ratings.map((rating) => ({
@@ -420,7 +426,6 @@ function buildCoachDiagnostics(
     numberOrNull(row.defense_rating) !== 5 ||
     String(row.development_rating || 'Average') !== 'Average'
   );
-
   return {
     coachRows: coachRows.length,
     matchedToRatingTeams: matched.length,
@@ -447,7 +452,6 @@ async function generatePredictions(season: number) {
     .select('*')
     .eq('season', season)
     .order('week', { ascending: true });
-
   if (error) throw error;
 
   const rows = dedupeRowsByConflictKey((games || [])
@@ -487,7 +491,9 @@ async function generatePredictions(season: number) {
         updated_at: new Date().toISOString()
       };
     })
-    .filter((row): row is NonNullable<typeof row> => row !== null), ['season', 'week', 'home_team', 'away_team']);
+    .filter((row): row is NonNullable<typeof row> => row !== null),
+    ['season', 'week', 'home_team', 'away_team']
+  );
 
   if (rows.length) {
     await upsertRows(supabase, 'predictions', rows, 'season,week,home_team,away_team');
@@ -499,19 +505,23 @@ async function generatePredictions(season: number) {
 async function runBacktest(season: number, optimize = true) {
   const supabase = getServiceSupabase();
   await ensureGamesLoaded(season);
+
   const optimizationSeason = optimize ? await getLatestCompletedSeason() : null;
   const optimizerRows = optimize
     ? await runOptimizerThroughSeason(optimizationSeason ?? season)
     : { status: 'reused' as const, count: 0, best: null };
+
   const config = optimizerRows.best
     ? { weights: optimizerRows.best.weights, calibration: optimizerRows.best.calibration }
     : await loadActiveModelConfig();
+
   const activeConfig = await loadActiveModelConfig();
   const games = await buildRatedGamesForSeason(season, {
     dynamicRatings: true,
     ratingFormula: activeConfig.ratingFormula,
     coachInfluence: activeConfig.coachInfluence
   });
+
   const evaluated = evaluateRatedGames(games, config.weights, config.calibration).games;
   const rawGameRows = evaluated.map(mapBacktestGameRow);
   const gameRows = dedupeRowsByConflictKey(rawGameRows, ['season', 'week', 'home_team', 'away_team']);
@@ -522,7 +532,6 @@ async function runBacktest(season: number, optimize = true) {
   if (gameRows.length) {
     await upsertRows(supabase, 'backtest_games', gameRows, 'season,week,home_team,away_team');
   }
-
   if (summaryRows.length) {
     await upsertRows(supabase, 'backtest_summary', summaryRows, 'season,week');
   }
@@ -569,6 +578,7 @@ function mapTeamGameStatRow(
   const matchingGame = games.find((game) => game.id === stat.gameId);
   const seasonType = normalizeSeasonType(stat.seasonType || matchingGame?.seasonType || requestedSeasonType);
   const week = stat.week ?? matchingGame?.week ?? null;
+
   return {
     cfbd_game_id: stat.gameId ?? matchingGame?.id ?? null,
     season: stat.season ?? matchingGame?.season ?? requestedSeason,
@@ -629,9 +639,13 @@ function numberOrNull(value: unknown) {
 function deriveRushRate(offense: Record<string, any> | undefined) {
   const rushTotal = numberOrNull(offense?.rushingPlays?.totalPPA);
   const passTotal = numberOrNull(offense?.passingPlays?.totalPPA);
-  const rushPpa = numberOrNull(offense?.rushingPlays?.ppa);
-  const passPpa = numberOrNull(offense?.passingPlays?.ppa);
-  if (rushTotal === null || passTotal === null || rushPpa === null || passPpa === null || rushPpa === 0 || passPpa === 0) {
+  const rushPpa   = numberOrNull(offense?.rushingPlays?.ppa);
+  const passPpa   = numberOrNull(offense?.passingPlays?.ppa);
+  if (
+    rushTotal === null || passTotal === null ||
+    rushPpa === null || passPpa === null ||
+    rushPpa === 0 || passPpa === 0
+  ) {
     return null;
   }
   const rushPlays = Math.abs(rushTotal / rushPpa);
@@ -656,7 +670,6 @@ function buildTalentScores(
     if (!grouped.has(row.team)) grouped.set(row.team, []);
     grouped.get(row.team)!.push(rating);
   }
-
   return Object.fromEntries(
     [...grouped.entries()].map(([team, ratings]) => [team, computeOn3Composite(ratings, season)])
   );
@@ -687,8 +700,8 @@ function buildCoachInfluenceCandidates(current: CoachInfluence) {
   const candidates: CoachInfluence[] = [
     current,
     { offenseBoost: 0.25, defenseBoost: 0.25, developmentBoost: 0.5 },
-    { offenseBoost: 0.6, defenseBoost: 0.6, developmentBoost: 1.0 },
-    { offenseBoost: 1.0, defenseBoost: 1.0, developmentBoost: 1.5 }
+    { offenseBoost: 0.6,  defenseBoost: 0.6,  developmentBoost: 1.0 },
+    { offenseBoost: 1.0,  defenseBoost: 1.0,  developmentBoost: 1.5 }
   ];
   const seen = new Set<string>();
   return candidates.filter((candidate) => {
@@ -700,7 +713,10 @@ function buildCoachInfluenceCandidates(current: CoachInfluence) {
 }
 
 function uniqueNumbers(values: number[]) {
-  return [...new Set(values.map((value) => Math.round(Number(value))).filter((value) => Number.isFinite(value) && value > 0))];
+  return [...new Set(
+    values.map((value) => Math.round(Number(value)))
+          .filter((value) => Number.isFinite(value) && value > 0)
+  )];
 }
 
 async function loadCoachRows() {
@@ -737,12 +753,14 @@ function applyCoachInfluenceToRating(
   const hireYear = numberOrNull(coachRow.hire_year) ?? 0;
   if (hireYear > season) return rating;
 
-  const offenseRating = numberOrNull(coachRow.offense_rating) ?? 5.5;
-  const defenseRating = numberOrNull(coachRow.defense_rating) ?? 5.5;
+  const offenseRating    = numberOrNull(coachRow.offense_rating)    ?? 5.5;
+  const defenseRating    = numberOrNull(coachRow.defense_rating)    ?? 5.5;
   const developmentRating = String(coachRow.development_rating || 'Average');
-  const offenseDelta = (offenseRating - 5.5) * (candidateInfluence.offenseBoost - currentInfluence.offenseBoost);
-  const defenseDelta = (defenseRating - 5.5) * (candidateInfluence.defenseBoost - currentInfluence.defenseBoost);
+
+  const offenseDelta     = (offenseRating    - 5.5) * (candidateInfluence.offenseBoost     - currentInfluence.offenseBoost);
+  const defenseDelta     = (defenseRating    - 5.5) * (candidateInfluence.defenseBoost     - currentInfluence.defenseBoost);
   const developmentDelta = developmentScore(developmentRating) * (candidateInfluence.developmentBoost - currentInfluence.developmentBoost);
+
   const offRating = clampModelRating((rating.offRating || 0) + offenseDelta);
   const defRating = clampModelRating((rating.defRating || 0) + defenseDelta);
 
@@ -750,10 +768,10 @@ function applyCoachInfluenceToRating(
     ...rating,
     offRating,
     defRating,
-    rushOff: clampModelRating((rating.rushOff || 0) + offenseDelta),
-    passOff: clampModelRating((rating.passOff || 0) + offenseDelta),
-    rushDef: clampModelRating((rating.rushDef || 0) + defenseDelta),
-    passDef: clampModelRating((rating.passDef || 0) + defenseDelta),
+    rushOff:   clampModelRating((rating.rushOff   || 0) + offenseDelta),
+    passOff:   clampModelRating((rating.passOff   || 0) + offenseDelta),
+    rushDef:   clampModelRating((rating.rushDef   || 0) + defenseDelta),
+    passDef:   clampModelRating((rating.passDef   || 0) + defenseDelta),
     composite: clampModelRating((rating.composite || 0) + (offenseDelta + defenseDelta) / 2 + developmentDelta)
   };
 }
@@ -766,13 +784,13 @@ function optimizeRampWeeksForHoldout(
   calibration: ModelCalibration
 ) {
   const holdoutGames = games.filter((game) => game.season === season);
-  const early = evaluateRatedGames(holdoutGames.filter((game) => game.week <= 4), weights, calibration).summary;
-  const middle = evaluateRatedGames(holdoutGames.filter((game) => game.week > 4 && game.week <= 9), weights, calibration).summary;
-  const late = evaluateRatedGames(holdoutGames.filter((game) => game.week > 9), weights, calibration).summary;
-  const currentRamp = Math.round(ratingFormula.talentRampWeeks || 8);
+  const early  = evaluateRatedGames(holdoutGames.filter((game) => game.week <= 4),                   weights, calibration).summary;
+  const middle = evaluateRatedGames(holdoutGames.filter((game) => game.week > 4 && game.week <= 9),  weights, calibration).summary;
+  const late   = evaluateRatedGames(holdoutGames.filter((game) => game.week > 9),                    weights, calibration).summary;
 
+  const currentRamp = Math.round(ratingFormula.talentRampWeeks || 8);
   if (!early.games || !late.games) return currentRamp;
-  if (early.modelScore > late.modelScore + 1.5) return Math.max(currentRamp, 10);
+  if (early.modelScore > late.modelScore + 1.5)  return Math.max(currentRamp, 10);
   if (late.modelScore > middle.modelScore + 1.5) return Math.min(currentRamp, 6);
   return currentRamp;
 }
@@ -783,6 +801,7 @@ export async function runFullOptimizerThroughSeason(season: number) {
   const coachOptions = buildCoachInfluenceCandidates(currentConfig.coachInfluence);
   const rampOptions = uniqueNumbers([currentConfig.ratingFormula.talentRampWeeks, 4, 6, 8, 10, 12]);
   const seasons = [...new Set([2022, 2023, 2024, 2025, season])].filter((s) => s <= season);
+
   const allResults: Array<{
     row: ReturnType<typeof optimizeWeights>[number];
     coachInfluence: CoachInfluence;
@@ -795,8 +814,8 @@ export async function runFullOptimizerThroughSeason(season: number) {
         ...currentConfig.ratingFormula,
         talentRampWeeks: rampWeeks
       };
-      const ratedGames: RatedGame[] = [];
 
+      const ratedGames: RatedGame[] = [];
       for (const s of seasons) {
         ratedGames.push(...await buildRatedGamesForSeason(s, {
           dynamicRatings: true,
@@ -809,11 +828,13 @@ export async function runFullOptimizerThroughSeason(season: number) {
       const candidateResults = optimizeWeights(ratedGames);
       const candidateBest = candidateResults[0];
       if (!candidateBest) continue;
+
       allResults.push(...candidateResults.slice(0, 50).map((row) => ({
         row,
         coachInfluence,
         ratingFormula
       })));
+
       console.log(JSON.stringify({
         coachInfluence,
         rampWeeks,
@@ -824,12 +845,12 @@ export async function runFullOptimizerThroughSeason(season: number) {
   }
 
   allResults.sort((a, b) =>
-    a.row.finalScore - b.row.finalScore ||
-    a.row.holdoutScore - b.row.holdoutScore ||
-    a.row.allScore - b.row.allScore ||
+    a.row.finalScore      - b.row.finalScore      ||
+    a.row.holdoutScore    - b.row.holdoutScore     ||
+    a.row.allScore        - b.row.allScore         ||
     a.row.stabilityPenalty - b.row.stabilityPenalty ||
-    a.row.holdoutAvgError - b.row.holdoutAvgError ||
-    a.row.holdoutRmse - b.row.holdoutRmse
+    a.row.holdoutAvgError - b.row.holdoutAvgError  ||
+    a.row.holdoutRmse     - b.row.holdoutRmse
   );
 
   const results = allResults.slice(0, 250);
@@ -859,6 +880,7 @@ export async function runFullOptimizerThroughSeason(season: number) {
   }));
 
   await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
+
   const best = results[0];
   await activateOptimizedConfig(
     supabase,
@@ -884,16 +906,11 @@ export async function runFullOptimizerThroughSeason(season: number) {
 
 function developmentScore(value: string) {
   switch (value) {
-    case 'Elite':
-      return 2;
-    case 'Good':
-      return 1;
-    case 'Poor':
-      return -1;
-    case 'Terrible':
-      return -2;
-    default:
-      return 0;
+    case 'Elite':     return 2;
+    case 'Good':      return 1;
+    case 'Poor':      return -1;
+    case 'Terrible':  return -2;
+    default:          return 0;
   }
 }
 
@@ -907,6 +924,7 @@ async function runOptimizerThroughSeason(season: number) {
   const ratedGames: RatedGame[] = [];
   const coachRows = await loadCoachRows();
   const coachOptions = buildCoachInfluenceCandidates(currentConfig.coachInfluence);
+
   let selectedCoachInfluence = currentConfig.coachInfluence;
   let selectedCoachGames: RatedGame[] = ratedGames;
   let selectedCoachScore = Infinity;
@@ -930,8 +948,8 @@ async function runOptimizerThroughSeason(season: number) {
     );
     const score = evaluateRatedGames(adjustedGames, currentConfig.weights, currentConfig.calibration).summary.modelScore;
     if (score < selectedCoachScore) {
-      selectedCoachScore = score;
-      selectedCoachGames = adjustedGames;
+      selectedCoachScore    = score;
+      selectedCoachGames    = adjustedGames;
       selectedCoachInfluence = coachInfluence;
     }
   }
@@ -940,17 +958,19 @@ async function runOptimizerThroughSeason(season: number) {
   const bestCandidate = selectedResults[0];
   const selectedRampWeeks = bestCandidate
     ? optimizeRampWeeksForHoldout(
-      season,
-      currentConfig.ratingFormula,
-      selectedCoachGames,
-      bestCandidate.weights,
-      bestCandidate.calibration
-    )
+        season,
+        currentConfig.ratingFormula,
+        selectedCoachGames,
+        bestCandidate.weights,
+        bestCandidate.calibration
+      )
     : currentConfig.ratingFormula.talentRampWeeks;
+
   const selectedRatingFormula = {
     ...currentConfig.ratingFormula,
     talentRampWeeks: selectedRampWeeks
   };
+
   const results = selectedResults.slice(0, 250);
   if (!results.length) return { status: 'skipped' as const, count: 0, best: null };
 
@@ -978,8 +998,17 @@ async function runOptimizerThroughSeason(season: number) {
   }));
 
   await upsertRows(supabase, 'weight_optimizer', rows, 'rank');
+
   const best = results[0];
-  await activateOptimizedConfig(supabase, season, best.weights, best.calibration, selectedCoachInfluence, selectedRatingFormula);
+  await activateOptimizedConfig(
+    supabase,
+    season,
+    best.weights,
+    best.calibration,
+    selectedCoachInfluence,
+    selectedRatingFormula
+  );
+
   return {
     status: 'success' as const,
     count: rows.length,
@@ -1002,7 +1031,6 @@ async function getLatestCompletedSeason() {
     .order('season', { ascending: false })
     .limit(1)
     .maybeSingle();
-
   if (error) throw error;
   return data ? Number(data.season) : null;
 }
@@ -1048,52 +1076,57 @@ async function activateOptimizedConfig(
 }
 
 type RatedGameBuildOptions = {
-  dynamicRatings?: boolean;
-  ratingFormula?: RatingFormula;
-  coachInfluence?: CoachInfluence;
+  dynamicRatings?:   boolean;
+  ratingFormula?:    RatingFormula;
+  coachInfluence?:   CoachInfluence;
   includeVegasLines?: boolean;
-  ratingWeeks?: number[];
+  ratingWeeks?:      number[];
 };
 
-async function buildRatedGamesForSeason(season: number, options: RatedGameBuildOptions = {}): Promise<RatedGame[]> {
+async function buildRatedGamesForSeason(
+  season: number,
+  options: RatedGameBuildOptions = {}
+): Promise<RatedGame[]> {
   const storedRatings = options.dynamicRatings ? null : await loadRatings(season);
-  const activeConfig = options.dynamicRatings ? await loadActiveModelConfig() : null;
+  const activeConfig  = options.dynamicRatings ? await loadActiveModelConfig() : null;
   const lineMap = options.includeVegasLines === false
     ? new Map<string, number>()
     : await getCachedVegasLineMap(new CfbdClient(), season);
-  const games = await loadCompletedGameRowsForSeason(season);
 
+  const games    = await loadCompletedGameRowsForSeason(season);
   const fbsTeams = await loadFbsTeamSet(season);
 
   const weeklyRatings = options.dynamicRatings && activeConfig
     ? await buildWeeklyRatingMaps(
-      season,
-      options.ratingFormula || activeConfig.ratingFormula,
-      options.coachInfluence || activeConfig.coachInfluence,
-      options.ratingWeeks
-    )
+        season,
+        options.ratingFormula || activeConfig.ratingFormula,
+        options.coachInfluence || activeConfig.coachInfluence,
+        options.ratingWeeks
+      )
     : null;
 
   return games
     .filter((game) => fbsTeams.has(String(game.home_team)) && fbsTeams.has(String(game.away_team)))
     .map((game): RatedGame | null => {
       const modelWeek = Number(game.model_week ?? game.week);
-      const ratings = weeklyRatings?.get(modelWeek) || storedRatings;
+      const ratings   = weeklyRatings?.get(modelWeek) || storedRatings;
       if (!ratings) return null;
+
       const home = ratings.get(String(game.home_team));
       const away = ratings.get(String(game.away_team));
       if (!home || !away) return null;
+
       return {
-        season: Number(game.season),
-        week: modelWeek,
-        displayWeek: formatBacktestWeekLabel(game.season_type, game.week),
-        seasonType: String(game.season_type || 'regular'),
-        homeTeam: String(game.home_team),
-        awayTeam: String(game.away_team),
+        season:       Number(game.season),
+        week:         modelWeek,
+        displayWeek:  formatBacktestWeekLabel(game.season_type, game.week),
+        seasonType:   String(game.season_type || 'regular'),
+        homeTeam:     String(game.home_team),
+        awayTeam:     String(game.away_team),
         home,
         away,
-        homePoints: Number(game.home_points),
-        awayPoints: Number(game.away_points),
+        homePoints:      Number(game.home_points),
+        awayPoints:      Number(game.away_points),
         vegasHomeSpread: lineMap.get(makeLineKey(game.season, game.season_type, game.week, game.home_team, game.away_team)) ?? null
       };
     })
@@ -1115,7 +1148,6 @@ async function loadCompletedGameRowsForSeason(season: number) {
       .order('model_week', { ascending: true, nullsFirst: false })
       .order('week', { ascending: true })
       .range(from, from + pageSize - 1);
-
     if (error) throw error;
     rows.push(...(data || []));
     if (!data || data.length < pageSize) break;
@@ -1139,7 +1171,6 @@ async function fetchSeasonFbsTeamSet(season: number) {
       .map((team) => String(team?.school || '').trim())
       .filter(Boolean)
   );
-
   if (!names.size) {
     throw new Error(`No season-specific FBS teams loaded for ${season}.`);
   }
@@ -1153,17 +1184,20 @@ async function buildWeeklyRatingMaps(
   ratingWeeks?: number[]
 ) {
   const { rawStats, rosterRows, coachRows, talentScores, returningProduction } = await getWeeklyRatingSource(season);
+
   const allowedWeeks = ratingWeeks?.length ? new Set(ratingWeeks.map(Number)) : null;
   const weeks = [...new Set(rawStats.filter((row) => row.season === season).map((row) => row.week))]
     .filter((week) => Number.isFinite(week))
     .filter((week) => !allowedWeeks || allowedWeeks.has(Number(week)))
     .sort((a, b) => a - b);
+
   const ratingMaps = new Map<number, Map<string, Rating>>();
 
   for (const week of weeks) {
     const availableStats = rawStats.filter((row) =>
       row.season < season || (row.season === season && row.week < week)
     );
+
     const ratings = calculateTeamRatings(availableStats, talentScores, {
       season,
       recencyWeight: ratingFormula.recencyWeight,
@@ -1176,8 +1210,10 @@ async function buildWeeklyRatingMaps(
       talentRampWeeks: ratingFormula.talentRampWeeks,
       ratingEvaluationWeek: week,
       coachInfluence,
-      coaches: coachRows, returningProduction
+      coaches: coachRows,
+      returningProduction
     });
+
     if (ratings.length) {
       ratingMaps.set(week, new Map(ratings.map((rating) => [rating.team, rating])));
     }
@@ -1197,7 +1233,6 @@ async function getCachedVegasLineMap(cfbd: CfbdClient, season: number) {
 async function getWeeklyRatingSource(season: number) {
   const existing = weeklyRatingSourceCache.get(season);
   if (existing) return existing;
-
   const promise = loadWeeklyRatingSource(season);
   weeklyRatingSourceCache.set(season, promise);
   return promise;
@@ -1218,7 +1253,6 @@ async function loadWeeklyRatingSource(season: number): Promise<WeeklyRatingSourc
       .order('team', { ascending: true })
       .order('week', { ascending: true })
       .range(from, from + pageSize - 1);
-
     if (error) throw error;
     statRows.push(...(data || []));
     if (!data || data.length < pageSize) break;
@@ -1232,13 +1266,12 @@ async function loadWeeklyRatingSource(season: number): Promise<WeeklyRatingSourc
       .order('team', { ascending: true })
       .order('player_name', { ascending: true })
       .range(from, from + pageSize - 1);
-
     if (error) throw error;
     rosterRows.push(...(data || []));
     if (!data || data.length < pageSize) break;
   }
 
-    const { data: coachRows, error: coachError } = await supabase
+  const { data: coachRows, error: coachError } = await supabase
     .from('coach_configs')
     .select('team,coach_name,hire_year,offense_rating,defense_rating,development_rating');
   if (coachError) throw coachError;
@@ -1259,12 +1292,13 @@ async function loadWeeklyRatingSource(season: number): Promise<WeeklyRatingSourc
   }
 
   return {
-    rawStats: statRows.map(mapRawStatRow),
+    rawStats:            statRows.map(mapRawStatRow),
     rosterRows,
-    coachRows: coachRows || [],
-    talentScores: buildTalentScores(rosterRows, season),
+    coachRows:           coachRows || [],
+    talentScores:        buildTalentScores(rosterRows, season),
     returningProduction
   };
+}
 
 async function loadRatings(season: number) {
   const supabase = getServiceSupabase();
@@ -1272,40 +1306,44 @@ async function loadRatings(season: number) {
     .from('ratings')
     .select('*')
     .eq('season', season);
-
   if (error) throw error;
 
   return new Map(
     (data || []).map((row) => [
       String(row.team),
       {
-        team: String(row.team),
-        composite: numberOrNull(row.composite) ?? 75,
-        offRating: numberOrNull(row.off_rating) ?? 75,
-        defRating: numberOrNull(row.def_rating) ?? 75,
-        rushOff: numberOrNull(row.rush_off_rating) ?? numberOrNull(row.off_rating) ?? 75,
-        passOff: numberOrNull(row.pass_off_rating) ?? numberOrNull(row.off_rating) ?? 75,
-        rushDef: numberOrNull(row.rush_def_rating) ?? numberOrNull(row.def_rating) ?? 75,
-        passDef: numberOrNull(row.pass_def_rating) ?? numberOrNull(row.def_rating) ?? 75,
-        qbRating: numberOrNull(row.qb_rating),
-        rbRating: numberOrNull(row.rb_rating),
-        wrRating: numberOrNull(row.wr_rating),
-        teRating: numberOrNull(row.te_rating),
-        olRating: numberOrNull(row.ol_rating),
-        dlRating: numberOrNull(row.dl_rating),
-        lbRating: numberOrNull(row.lb_rating),
-        cbRating: numberOrNull(row.cb_rating),
-        sRating: numberOrNull(row.s_rating),
-        kRating: numberOrNull(row.k_rating),
-        pRating: numberOrNull(row.p_rating),
-        passRate: numberOrNull(row.pass_rate) ?? 0.5,
-        games: numberOrNull(row.games)
+        team:      String(row.team),
+        composite: numberOrNull(row.composite)          ?? 75,
+        offRating: numberOrNull(row.off_rating)         ?? 75,
+        defRating: numberOrNull(row.def_rating)         ?? 75,
+        rushOff:   numberOrNull(row.rush_off_rating)    ?? numberOrNull(row.off_rating) ?? 75,
+        passOff:   numberOrNull(row.pass_off_rating)    ?? numberOrNull(row.off_rating) ?? 75,
+        rushDef:   numberOrNull(row.rush_def_rating)    ?? numberOrNull(row.def_rating) ?? 75,
+        passDef:   numberOrNull(row.pass_def_rating)    ?? numberOrNull(row.def_rating) ?? 75,
+        qbRating:  numberOrNull(row.qb_rating),
+        rbRating:  numberOrNull(row.rb_rating),
+        wrRating:  numberOrNull(row.wr_rating),
+        teRating:  numberOrNull(row.te_rating),
+        olRating:  numberOrNull(row.ol_rating),
+        dlRating:  numberOrNull(row.dl_rating),
+        lbRating:  numberOrNull(row.lb_rating),
+        cbRating:  numberOrNull(row.cb_rating),
+        sRating:   numberOrNull(row.s_rating),
+        kRating:   numberOrNull(row.k_rating),
+        pRating:   numberOrNull(row.p_rating),
+        passRate:  numberOrNull(row.pass_rate) ?? 0.5,
+        games:     numberOrNull(row.games)
       } satisfies Rating
     ])
   );
 }
 
-async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibration: ModelCalibration; coachInfluence: CoachInfluence; ratingFormula: RatingFormula }> {
+async function loadActiveModelConfig(): Promise<{
+  weights: ModelWeights;
+  calibration: ModelCalibration;
+  coachInfluence: CoachInfluence;
+  ratingFormula: RatingFormula;
+}> {
   const supabase = getServiceSupabase();
   const { data, error } = await supabase
     .from('model_configs')
@@ -1313,49 +1351,49 @@ async function loadActiveModelConfig(): Promise<{ weights: ModelWeights; calibra
     .eq('is_active', true)
     .limit(1)
     .maybeSingle();
-
   if (error) throw error;
+
   if (!data) return {
     weights: DEFAULT_WEIGHTS,
     calibration: DEFAULT_CALIBRATION,
     coachInfluence: {
-      offenseBoost: 0.6,
-      defenseBoost: 0.6,
+      offenseBoost:    0.6,
+      defenseBoost:    0.6,
       developmentBoost: 1.0
     },
     ratingFormula: {
-      recencyWeight: 2.5,
-      talentWeight: 0.4,
-      historicalPositionTalentWeight: 0.3,
-      preseasonPositionTalentWeight: 0.7,
-      talentRampWeeks: 8
+      recencyWeight:                    2.5,
+      talentWeight:                     0.4,
+      historicalPositionTalentWeight:   0.3,
+      preseasonPositionTalentWeight:    0.7,
+      talentRampWeeks:                  8
     }
   };
 
   return {
     weights: {
-      pass: numberOrNull(data.pass_weight) ?? DEFAULT_WEIGHTS.pass,
-      rush: numberOrNull(data.rush_weight) ?? DEFAULT_WEIGHTS.rush,
-      overall: numberOrNull(data.overall_weight) ?? DEFAULT_WEIGHTS.overall,
+      pass:      numberOrNull(data.pass_weight)      ?? DEFAULT_WEIGHTS.pass,
+      rush:      numberOrNull(data.rush_weight)      ?? DEFAULT_WEIGHTS.rush,
+      overall:   numberOrNull(data.overall_weight)   ?? DEFAULT_WEIGHTS.overall,
       composite: numberOrNull(data.composite_weight) ?? DEFAULT_WEIGHTS.composite
     },
     calibration: {
       pointsPerRating: numberOrNull(data.points_per_rating) ?? DEFAULT_CALIBRATION.pointsPerRating,
-      homeField: numberOrNull(data.home_field) ?? DEFAULT_CALIBRATION.homeField,
-      marginShrink: numberOrNull(data.margin_shrink) ?? DEFAULT_CALIBRATION.marginShrink,
-      maxMargin: numberOrNull(data.max_margin) ?? DEFAULT_CALIBRATION.maxMargin
+      homeField:       numberOrNull(data.home_field)        ?? DEFAULT_CALIBRATION.homeField,
+      marginShrink:    numberOrNull(data.margin_shrink)     ?? DEFAULT_CALIBRATION.marginShrink,
+      maxMargin:       numberOrNull(data.max_margin)        ?? DEFAULT_CALIBRATION.maxMargin
     },
     coachInfluence: {
-      offenseBoost: numberOrNull(data.coach_offense_boost) ?? 0.6,
-      defenseBoost: numberOrNull(data.coach_defense_boost) ?? 0.6,
+      offenseBoost:     numberOrNull(data.coach_offense_boost)     ?? 0.6,
+      defenseBoost:     numberOrNull(data.coach_defense_boost)     ?? 0.6,
       developmentBoost: numberOrNull(data.coach_development_boost) ?? 1.0
     },
     ratingFormula: {
-      recencyWeight: numberOrNull(data.rating_recency_weight) ?? 2.5,
-      talentWeight: numberOrNull(data.rating_talent_weight) ?? 0.4,
-      historicalPositionTalentWeight: numberOrNull(data.rating_historical_position_weight) ?? 0.3,
-      preseasonPositionTalentWeight: numberOrNull(data.rating_preseason_position_weight) ?? 0.7,
-      talentRampWeeks: numberOrNull(data.rating_talent_ramp_weeks) ?? 8
+      recencyWeight:                  numberOrNull(data.rating_recency_weight)              ?? 2.5,
+      talentWeight:                   numberOrNull(data.rating_talent_weight)               ?? 0.4,
+      historicalPositionTalentWeight: numberOrNull(data.rating_historical_position_weight)  ?? 0.3,
+      preseasonPositionTalentWeight:  numberOrNull(data.rating_preseason_position_weight)   ?? 0.7,
+      talentRampWeeks:                numberOrNull(data.rating_talent_ramp_weeks)           ?? 8
     }
   };
 }
@@ -1374,12 +1412,20 @@ async function buildVegasLineMap(cfbd: CfbdClient, season: number) {
 }
 
 function pickVegasSpread(lines: Array<{ provider?: string; spread?: number | null }>) {
-  const preferred = lines.find((line) => /consensus|average/i.test(line.provider || '') && Number.isFinite(Number(line.spread)));
+  const preferred = lines.find(
+    (line) => /consensus|average/i.test(line.provider || '') && Number.isFinite(Number(line.spread))
+  );
   const fallback = preferred || lines.find((line) => Number.isFinite(Number(line.spread)));
   return fallback ? Number(fallback.spread) : null;
 }
 
-function makeLineKey(season: number, seasonType: unknown, week: number, homeTeam: string, awayTeam: string) {
+function makeLineKey(
+  season: number,
+  seasonType: unknown,
+  week: number,
+  homeTeam: string,
+  awayTeam: string
+) {
   return `${season}|${normalizeSeasonType(seasonType)}|${week}|${homeTeam}|${awayTeam}`.toLowerCase();
 }
 
@@ -1392,52 +1438,71 @@ function formatVegasSpread(homeTeam: string, awayTeam: string, homeSpread: numbe
 function mapBacktestGameRow(game: EvaluatedGame) {
   const vegasGrade = game.vegasHomeSpread === null
     ? { pick: '', result: '', atsMargin: null }
-    : gradeModelVsVegas(game.homeTeam, game.awayTeam, game.vegasHomeSpread, game.modelHomeSpread, game.actualHomeMargin);
+    : gradeModelVsVegas(
+        game.homeTeam,
+        game.awayTeam,
+        game.vegasHomeSpread,
+        game.modelHomeSpread,
+        game.actualHomeMargin
+      );
+
   const actualResult = game.actualWinner === 'TIE'
     ? 'TIE'
     : `${game.actualWinner} by ${game.actualWinMargin}`;
 
   return {
-    season: game.season,
-    week: game.week,
-    week_label: game.displayWeek || String(game.week),
-    home_team: game.homeTeam,
-    away_team: game.awayTeam,
-    vegas_spread: game.vegasHomeSpread === null ? null : formatVegasSpread(game.homeTeam, game.awayTeam, game.vegasHomeSpread),
-    model_spread: game.modelHomeMargin === 0 ? "Pick'em" : `${game.predictedWinner} -${Math.abs(game.modelHomeMargin).toFixed(1)}`,
-    model_vegas_diff: game.modelVegasDiff,
-    model_vegas_pick: vegasGrade.pick,
-    model_vegas_result: vegasGrade.result,
+    season:                 game.season,
+    week:                   game.week,
+    week_label:             game.displayWeek || String(game.week),
+    home_team:              game.homeTeam,
+    away_team:              game.awayTeam,
+    vegas_spread:           game.vegasHomeSpread === null
+                              ? null
+                              : formatVegasSpread(game.homeTeam, game.awayTeam, game.vegasHomeSpread),
+    model_spread:           game.modelHomeMargin === 0
+                              ? "Pick'em"
+                              : `${game.predictedWinner} -${Math.abs(game.modelHomeMargin).toFixed(1)}`,
+    model_vegas_diff:       game.modelVegasDiff,
+    model_vegas_pick:       vegasGrade.pick,
+    model_vegas_result:     vegasGrade.result,
     model_vegas_ats_margin: vegasGrade.atsMargin,
-    home_pts: game.homePoints,
-    away_pts: game.awayPoints,
-    home_margin: game.actualHomeMargin,
-    actual_result: actualResult,
-    predicted_favorite: game.predictedWinner,
-    predicted_margin: game.predictedMargin,
-    model_home_margin: game.modelHomeMargin,
-    actual_winner: game.actualWinner,
-    actual_win_margin: game.actualWinMargin,
-    margin_error: game.marginError,
-    error_bucket: game.marginError <= 3 ? 'Within 3' : game.marginError <= 7 ? 'Within 7' : game.marginError <= 10 ? 'Within 10' : 'Missed by 10+',
-    pick_result: game.pickCorrect ? 'CORRECT' : 'WRONG',
-    synced_at: new Date().toISOString()
+    home_pts:               game.homePoints,
+    away_pts:               game.awayPoints,
+    home_margin:            game.actualHomeMargin,
+    actual_result:          actualResult,
+    predicted_favorite:     game.predictedWinner,
+    predicted_margin:       game.predictedMargin,
+    model_home_margin:      game.modelHomeMargin,
+    actual_winner:          game.actualWinner,
+    actual_win_margin:      game.actualWinMargin,
+    margin_error:           game.marginError,
+    error_bucket:           game.marginError <= 3  ? 'Within 3'
+                          : game.marginError <= 7  ? 'Within 7'
+                          : game.marginError <= 10 ? 'Within 10'
+                          : 'Missed by 10+',
+    pick_result:            game.pickCorrect ? 'CORRECT' : 'WRONG',
+    synced_at:              new Date().toISOString()
   };
 }
 
 function buildBacktestSummaryRows(season: number, games: EvaluatedGame[]) {
   const grouped = new Map<string, EvaluatedGame[]>();
+
   for (const game of games.slice().sort((a, b) => a.week - b.week)) {
     const label = normalizeSeasonType(game.seasonType) === 'postseason'
       ? 'Playoffs'
       : String(game.displayWeek || game.week);
     grouped.set(label, [...(grouped.get(label) || []), game]);
   }
-  const rows = [...grouped.entries()].map(([week, weekGames]) => buildSummaryRow(String(season), week, weekGames));
+
+  const rows = [...grouped.entries()].map(([week, weekGames]) =>
+    buildSummaryRow(String(season), week, weekGames)
+  );
 
   if (games.length) {
     rows.push(buildSummaryRow(String(season), `${season} TOTAL`, games));
   }
+
   return rows;
 }
 
@@ -1445,26 +1510,37 @@ function buildSummaryRow(season: string, week: string, games: EvaluatedGame[]) {
   const summary = summarizeEvaluatedGames(games);
   const vegasGrades = games
     .filter((game) => game.vegasHomeSpread !== null)
-    .map((game) => gradeModelVsVegas(game.homeTeam, game.awayTeam, game.vegasHomeSpread!, game.modelHomeSpread, game.actualHomeMargin));
-  const wins = vegasGrades.filter((grade) => grade.result === 'WIN').length;
+    .map((game) =>
+      gradeModelVsVegas(
+        game.homeTeam,
+        game.awayTeam,
+        game.vegasHomeSpread!,
+        game.modelHomeSpread,
+        game.actualHomeMargin
+      )
+    );
+
+  const wins   = vegasGrades.filter((grade) => grade.result === 'WIN').length;
   const losses = vegasGrades.filter((grade) => grade.result === 'LOSS').length;
   const pushes = vegasGrades.filter((grade) => grade.result === 'PUSH').length;
 
   return {
     season,
     week,
-    games: summary.games,
-    picks_correct: summary.pickCorrect,
-    picks_wrong: summary.games - summary.pickCorrect,
-    pick_pct: summary.pickPct,
-    avg_margin_error: summary.avgMarginError,
-    median_margin_error: summary.medianMarginError,
-    vegas_edge_plays: wins + losses + pushes,
-    vegas_edge_wins: wins,
-    vegas_edge_losses: losses,
-    vegas_edge_pushes: pushes,
-    vegas_edge_win_pct: wins + losses + pushes ? round2((wins / (wins + losses + pushes)) * 100) : null,
-    synced_at: new Date().toISOString()
+    games:                  summary.games,
+    picks_correct:          summary.pickCorrect,
+    picks_wrong:            summary.games - summary.pickCorrect,
+    pick_pct:               summary.pickPct,
+    avg_margin_error:       summary.avgMarginError,
+    median_margin_error:    summary.medianMarginError,
+    vegas_edge_plays:       wins + losses + pushes,
+    vegas_edge_wins:        wins,
+    vegas_edge_losses:      losses,
+    vegas_edge_pushes:      pushes,
+    vegas_edge_win_pct:     wins + losses + pushes
+                              ? round2((wins / (wins + losses + pushes)) * 100)
+                              : null,
+    synced_at:              new Date().toISOString()
   };
 }
 
@@ -1473,7 +1549,7 @@ function round2(value: number) {
 }
 
 function ratingDelta(nextValue: unknown, previousValue: unknown) {
-  const next = numberOrNull(nextValue);
+  const next     = numberOrNull(nextValue);
   const previous = numberOrNull(previousValue);
   if (next === null || previous === null) return null;
   const delta = round2(next - previous);
@@ -1498,7 +1574,10 @@ async function upsertRows(
   }
 }
 
-function dedupeRowsByConflictKey<T extends Record<string, unknown>>(rows: T[], keyFields: string[]) {
+function dedupeRowsByConflictKey<T extends Record<string, unknown>>(
+  rows: T[],
+  keyFields: string[]
+) {
   const byKey = new Map<string, T>();
   for (const row of rows) {
     const key = keyFields
@@ -1509,7 +1588,10 @@ function dedupeRowsByConflictKey<T extends Record<string, unknown>>(rows: T[], k
   return Array.from(byKey.values());
 }
 
-async function clearBacktestRows(supabase: ReturnType<typeof getServiceSupabase>, season: number) {
+async function clearBacktestRows(
+  supabase: ReturnType<typeof getServiceSupabase>,
+  season: number
+) {
   const gameDelete = await supabase
     .from('backtest_games')
     .delete()

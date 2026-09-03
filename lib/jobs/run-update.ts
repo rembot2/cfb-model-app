@@ -23,6 +23,7 @@ type WeeklyRatingSource = {
   rosterRows: any[];
   coachRows: any[];
   talentScores: Record<string, number>;
+  returningProduction: Record<string, { ret_prod: number; off_ret: number; def_ret: number }>;
 };
 
 const weeklyRatingSourceCache = new Map<number, Promise<WeeklyRatingSource>>();
@@ -323,6 +324,22 @@ async function calculateRatings(season: number) {
     .from('coach_configs')
     .select('team,coach_name,hire_year,offense_rating,defense_rating,development_rating');
   if (coachError) throw coachError;
+
+  const { data: rpRows, error: rpError } = await supabase
+    .from('returning_production')
+    .select('team,ret_prod,off_ret,def_ret')
+    .eq('season', season);
+  if (rpError) throw rpError;
+
+  const returningProduction: Record<string, { ret_prod: number; off_ret: number; def_ret: number }> = {};
+  for (const row of rpRows || []) {
+    returningProduction[row.team] = {
+      ret_prod: row.ret_prod,
+      off_ret:  row.off_ret,
+      def_ret:  row.def_ret
+    };
+  }
+
   const activeConfig = await loadActiveModelConfig();
 
   const talentScores = buildTalentScores(rosterRows, season);
@@ -343,7 +360,8 @@ async function calculateRatings(season: number) {
       preseasonPositionTalentWeight: activeConfig.ratingFormula.preseasonPositionTalentWeight,
       talentRampWeeks: activeConfig.ratingFormula.talentRampWeeks,
       coachInfluence: activeConfig.coachInfluence,
-      coaches: coachRows || []
+      coaches: coachRows || [],
+      returningProduction
     }
   );
   const { data: existingRatings, error: existingRatingsError } = await supabase
@@ -1134,7 +1152,7 @@ async function buildWeeklyRatingMaps(
   coachInfluence: CoachInfluence,
   ratingWeeks?: number[]
 ) {
-  const { rawStats, rosterRows, coachRows, talentScores } = await getWeeklyRatingSource(season);
+  const { rawStats, rosterRows, coachRows, talentScores, returningProduction } = await getWeeklyRatingSource(season);
   const allowedWeeks = ratingWeeks?.length ? new Set(ratingWeeks.map(Number)) : null;
   const weeks = [...new Set(rawStats.filter((row) => row.season === season).map((row) => row.week))]
     .filter((week) => Number.isFinite(week))
@@ -1158,7 +1176,7 @@ async function buildWeeklyRatingMaps(
       talentRampWeeks: ratingFormula.talentRampWeeks,
       ratingEvaluationWeek: week,
       coachInfluence,
-      coaches: coachRows
+      coaches: coachRows, returningProduction
     });
     if (ratings.length) {
       ratingMaps.set(week, new Map(ratings.map((rating) => [rating.team, rating])));
@@ -1220,18 +1238,33 @@ async function loadWeeklyRatingSource(season: number): Promise<WeeklyRatingSourc
     if (!data || data.length < pageSize) break;
   }
 
-  const { data: coachRows, error: coachError } = await supabase
+    const { data: coachRows, error: coachError } = await supabase
     .from('coach_configs')
     .select('team,coach_name,hire_year,offense_rating,defense_rating,development_rating');
   if (coachError) throw coachError;
+
+  const { data: rpRows, error: rpError } = await supabase
+    .from('returning_production')
+    .select('team,ret_prod,off_ret,def_ret')
+    .eq('season', season);
+  if (rpError) throw rpError;
+
+  const returningProduction: Record<string, { ret_prod: number; off_ret: number; def_ret: number }> = {};
+  for (const row of rpRows || []) {
+    returningProduction[row.team] = {
+      ret_prod: row.ret_prod,
+      off_ret:  row.off_ret,
+      def_ret:  row.def_ret
+    };
+  }
 
   return {
     rawStats: statRows.map(mapRawStatRow),
     rosterRows,
     coachRows: coachRows || [],
-    talentScores: buildTalentScores(rosterRows, season)
+    talentScores: buildTalentScores(rosterRows, season),
+    returningProduction
   };
-}
 
 async function loadRatings(season: number) {
   const supabase = getServiceSupabase();

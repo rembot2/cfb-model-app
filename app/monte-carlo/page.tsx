@@ -4,12 +4,13 @@ import {
   PLAYOFF_PICTURE,
   SIMULATIONS,
   TEAM_SIMS,
-  WIN_DISTRIBUTIONS
+  WIN_DISTRIBUTIONS,
+  type WinDistribution
 } from '@/lib/data/monte-carlo-2025';
 
-const SEGMENT_COLORS = [
-  '#8a6a2b', '#b4863a', '#d8a84e', '#f5d483', '#e9c46a', '#d7d9dc', '#a8a9ad'
-];
+const DIST_WIN_VALUES = Array.from(
+  new Set(WIN_DISTRIBUTIONS.flatMap(team => team.dist.map(d => d.wins)))
+).sort((a, b) => a - b);
 
 export default function MonteCarloPage() {
   const top = TEAM_SIMS[0];
@@ -62,70 +63,58 @@ export default function MonteCarloPage() {
         />
       </section>
 
-      <section className="panel">
+      <section className="panel table-panel">
         <div className="panel-header">
           <div>
             <h3>Conference Breakdown</h3>
             <p className="page-subtitle">Same simulation output, grouped by conference and sorted by average wins.</p>
           </div>
         </div>
-        <div className="conference-grid">
-          {CONFERENCE_ORDER.map(conf => {
-            const teams = TEAM_SIMS.filter(t => t.conference === conf).sort((a, b) => b.avgW - a.avgW);
-            return (
-              <div className="conference-card card" key={conf}>
-                <h4>{conf}<span>{teams.length} teams</span></h4>
-                <div className="conference-team-list">
-                  {teams.map(t => (
-                    <div className="conference-team-row" key={t.team}>
-                      <span className="ct-rank">#{t.rank}</span>
-                      <span className="ct-name">{t.team}</span>
-                      <span className="ct-avg">{t.avgW.toFixed(1)}</span>
-                      <span className="ct-range">{t.range80}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {CONFERENCE_ORDER.map(conf => {
+          const teams = TEAM_SIMS.filter(t => t.conference === conf).sort((a, b) => b.avgW - a.avgW);
+          return (
+            <div className="backtest-season-panel" key={conf}>
+              <h4 className="conference-table-heading">{conf} <span>{teams.length} teams</span></h4>
+              <Table
+                rows={teams}
+                columns={[
+                  { label: 'Rank', className: 'num', render: row => String(row.rank) },
+                  { label: 'Team', render: row => row.team },
+                  { label: 'Avg W', className: 'num', render: row => row.avgW.toFixed(1) },
+                  { label: 'Median', className: 'num', render: row => row.med.toFixed(1) },
+                  { label: 'Floor', className: 'num', render: row => String(row.floor) },
+                  { label: 'Ceiling', className: 'num', render: row => String(row.ceiling) },
+                  { label: 'Std Dev', className: 'num', render: row => row.stdDev.toFixed(2) },
+                  { label: '80% Range', render: row => row.range80 }
+                ]}
+              />
+            </div>
+          );
+        })}
       </section>
 
-      <section className="panel">
+      <section className="panel table-panel">
         <div className="panel-header">
           <div>
             <h3>Win Total Probability Distributions</h3>
-            <p className="page-subtitle">Top 20 teams. Each bar shows the share of simulated seasons landing on each win total.</p>
+            <p className="page-subtitle">Top 20 teams. Share of the {SIMULATIONS.toLocaleString()} simulated seasons landing on each win total.</p>
           </div>
         </div>
-        <div className="dist-list">
-          {WIN_DISTRIBUTIONS.map(team => (
-            <div className="dist-row" key={team.team}>
-              <div className="dist-name">
-                {team.team}
-                <small>{team.avgW.toFixed(1)} avg wins</small>
-              </div>
-              <div className="dist-track" title={team.dist.map(d => `${d.wins}W: ${d.pct}%`).join(' · ')}>
-                {team.dist.map((d, i) => (
-                  <div
-                    key={d.wins}
-                    className="dist-segment"
-                    style={{ width: `${d.pct}%`, background: SEGMENT_COLORS[i % SEGMENT_COLORS.length] }}
-                  >
-                    {d.pct >= 8 ? `${d.wins}W` : ''}
-                  </div>
-                ))}
-              </div>
-              <div className="dist-avg">{team.avgW.toFixed(1)}</div>
-            </div>
-          ))}
-        </div>
-        <div className="dist-legend">
-          <span><i style={{ background: '#8a6a2b' }} />Fewer wins</span>
-          <span><i style={{ background: '#d8a84e' }} />Mode</span>
-          <span><i style={{ background: '#d7d9dc' }} />More wins</span>
-          <span style={{ marginLeft: 'auto', color: 'var(--faint)' }}>Hover a bar for the full breakdown</span>
-        </div>
+        <Table
+          rows={WIN_DISTRIBUTIONS}
+          columns={[
+            { label: 'Team', render: row => row.team },
+            { label: 'Avg W', className: 'num', render: row => row.avgW.toFixed(1) },
+            ...DIST_WIN_VALUES.map(wins => ({
+              label: `${wins}W`,
+              className: 'num',
+              render: (row: WinDistribution) => {
+                const entry = row.dist.find(d => d.wins === wins);
+                return entry ? `${entry.pct}%` : '–';
+              }
+            }))
+          ]}
+        />
       </section>
 
       <section className="panel table-panel">

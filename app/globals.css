@@ -1613,7 +1613,143 @@ tbody tr.summary-total-row:nth-child(even) {
   .main-inner {
     padding: 20px;
   }
+.conference-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
 
+.conference-card h4 {
+  align-items: baseline;
+  color: var(--gold-2);
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+  letter-spacing: 0.08em;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+
+.conference-card h4 span {
+  color: var(--faint);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.conference-team-list {
+  display: grid;
+  gap: 7px;
+}
+
+.conference-team-row {
+  align-items: center;
+  color: #e8e9eb;
+  display: grid;
+  font-size: 12.5px;
+  gap: 8px;
+  grid-template-columns: 20px 1fr auto auto;
+}
+
+.conference-team-row .ct-rank {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.conference-team-row .ct-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conference-team-row .ct-avg {
+  color: var(--gold-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  text-align: right;
+}
+
+.conference-team-row .ct-range {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dist-list {
+  display: grid;
+  gap: 14px;
+}
+
+.dist-row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(120px, 160px) 1fr 64px;
+}
+
+.dist-name {
+  color: #f3f3f3;
+  font-weight: 800;
+}
+
+.dist-name small {
+  color: var(--faint);
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.dist-track {
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: 6px;
+  display: flex;
+  height: 22px;
+  overflow: hidden;
+}
+
+.dist-segment {
+  align-items: center;
+  color: rgba(5, 5, 6, 0.82);
+  display: flex;
+  font-size: 10px;
+  font-weight: 800;
+  justify-content: center;
+  min-width: 0;
+}
+
+.dist-avg {
+  color: var(--gold-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  text-align: right;
+}
+
+.dist-legend {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  gap: 10px 16px;
+  margin-top: 4px;
+}
+
+.dist-legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.dist-legend i {
+  border-radius: 2px;
+  display: inline-block;
+  height: 9px;
+  width: 9px;
+}
   .hero-panel,
   .page-hero,
   .kpi-grid,

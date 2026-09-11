@@ -17,11 +17,14 @@ Never put the secret directly in the workflow file or a browser URL.
 
 ## What the workflow does
 
-1. Refreshes 2026 teams, games, coaches, advanced stats, and four roster batches.
-2. Recalculates ratings and predictions for 2022 through 2026.
-3. Runs the optimizer once using all completed seasons and activates rank 1.
-4. Rebuilds every historical backtest with that active optimized configuration.
-5. Regenerates 2026 predictions with the optimized configuration.
+1. Refreshes 2026 games and stats for whatever games were played since the last run.
+2. Recalculates 2026 ratings and predictions using the same formula as the backtest engine.
+
+Teams, coaches, and rosters/talent composites are no longer refreshed on this weekly
+schedule — those don't change meaningfully week to week during the season. Run the
+`Recalculate all ratings`, `Rebuild backtests`, or `Full optimizer` workflows manually
+(Actions tab, `workflow_dispatch`) when you actually need to refresh historical seasons,
+rebuild backtests, or re-optimize weights.
 
 ## Run it now
 

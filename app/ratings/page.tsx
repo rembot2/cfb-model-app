@@ -1,24 +1,68 @@
-import { Table } from '@/components/Table';
 import { SeasonSelect } from '@/components/SeasonSelect';
-import { fetchRatingsSeason } from '@/lib/db/queries';
+import { fetchRatingTeam } from '@/lib/db/queries';
 import Link from 'next/link';
+import type { CSSProperties } from 'react';
 
 export const dynamic = 'force-dynamic';
 
-export default async function RatingsPage({ searchParams }: { searchParams?: { season?: string } }) {
+type TeamRatingPageProps = {
+  params: { team: string };
+  searchParams?: { season?: string };
+};
+
+const matchupRatings = [
+  ['Pass Offense', 'pass_off_rating'],
+  ['Rush Offense', 'rush_off_rating'],
+  ['Pass Defense', 'pass_def_rating'],
+  ['Rush Defense', 'rush_def_rating']
+] as const;
+
+const positionRatings = [
+  ['QB', 'qb_rating'],
+  ['RB', 'rb_rating'],
+  ['WR', 'wr_rating'],
+  ['TE', 'te_rating'],
+  ['OL', 'ol_rating'],
+  ['DL', 'dl_rating'],
+  ['LB', 'lb_rating'],
+  ['CB', 'cb_rating'],
+  ['S', 's_rating'],
+  ['K', 'k_rating'],
+  ['P', 'p_rating']
+] as const;
+
+export default async function TeamRatingPage({ params, searchParams }: TeamRatingPageProps) {
   const requestedSeason = Number(searchParams?.season);
-  const { rows, seasons, season } = await fetchRatingsSeason(
-    Number.isFinite(requestedSeason) ? requestedSeason : undefined
+  const { row, rank, seasons, season, roster } = await fetchRatingTeam(
+    Number.isFinite(requestedSeason) ? requestedSeason : undefined,
+    params.team
   );
+  const team = decodeURIComponent(params.team);
+
+  if (!row) {
+    return (
+      <>
+        <header className="topbar">
+          <div>
+            <div className="eyebrow">Ratings</div>
+            <h2>{team}</h2>
+            <p className="page-subtitle">No rating found for this season.</p>
+          </div>
+          <SeasonSelect seasons={seasons} selected={season} />
+        </header>
+        <Link className="back-link" href={`/ratings?season=${season ?? ''}`}>Back to ratings</Link>
+      </>
+    );
+  }
 
   return (
     <>
       <header className="page-hero">
         <div>
-          <div className="eyebrow">Power Ratings</div>
-          <h2>{season ?? ''} team rating board</h2>
+          <div className="eyebrow">Team Profile</div>
+          <h2>{team}</h2>
           <p className="page-subtitle">
-            Composite, offense, and defense are the headline ratings. Open a team profile for matchup splits, position groups, and roster detail.
+            {season} season{rank ? ` | National rank #${rank}` : ''}. Complete rating profile, matchup splits, position groups, and roster board.
           </p>
         </div>
         <div className="page-hero-actions">
@@ -26,40 +70,52 @@ export default async function RatingsPage({ searchParams }: { searchParams?: { s
         </div>
       </header>
 
+      <Link className="back-link" href={`/ratings?season=${season ?? ''}`}>Back to ratings</Link>
+
       <section className="page-summary-grid">
-        <SummaryTile label="Teams Loaded" value={String(rows.length)} detail={season ? `${season} season` : 'No season selected'} />
-        <SummaryTile label="No. 1 Team" value={String(rows[0]?.team ?? '-')} detail={`Composite ${fmt(rows[0]?.composite) || '-'}`} />
-        <SummaryTile label="Top Offense" value={leader(rows, 'off_rating')} detail="Best offensive rating" />
-        <SummaryTile label="Top Defense" value={leader(rows, 'def_rating')} detail="Best defensive rating" />
+        <SummaryTile label="Rank" value={rank ? `#${rank}` : '-'} detail={`${season ?? '-'} national board`} />
+        <SummaryTile label="Pass Rate" value={fmtPct(row.pass_rate)} detail="Offensive tendency" />
+        <SummaryTile label="Best Unit" value={bestUnit(row)} detail="Highest position group" />
+        <SummaryTile label="Roster Players" value={String(roster.length)} detail="Loaded for profile" />
       </section>
 
-      <section className="panel table-panel">
+      <section className="rating-rings">
+        <RatingRing label="Composite" value={row.composite} />
+        <RatingRing label="Offense" value={row.off_rating} />
+        <RatingRing label="Defense" value={row.def_rating} />
+      </section>
+
+      <section className="detail-section panel">
         <div className="panel-header">
           <div>
-            <h3>National Board</h3>
-            <p className="page-subtitle">Click a team to open its full rating profile.</p>
+            <h3>Matchup Splits</h3>
+            <p className="page-subtitle">These are the ratings the game predictor uses for pass/rush edges.</p>
           </div>
         </div>
-        <Table
-          rows={rows}
-          columns={[
-            { label: 'Rank', className: 'num', render: (_row, index) => String(index + 1) },
-            {
-              label: 'Team',
-              render: row => {
-                const team = String(row.team ?? '');
-                return (
-                  <Link className="team-link" href={`/ratings/${encodeURIComponent(team)}?season=${season ?? ''}`}>
-                    {team}
-                  </Link>
-                );
-              }
-            },
-            { label: 'Composite', className: 'num', render: row => <RatingWithDelta value={row.composite} delta={row.composite_delta} /> },
-            { label: 'Offense', className: 'num', render: row => <RatingWithDelta value={row.off_rating} delta={row.off_rating_delta} /> },
-            { label: 'Defense', className: 'num', render: row => <RatingWithDelta value={row.def_rating} delta={row.def_rating_delta} /> }
-          ]}
-        />
+        <div className="rating-card-grid">
+          {matchupRatings.map(([label, key]) => (
+            <RatingCard key={key} label={label} value={row[key]} />
+          ))}
+        </div>
+      </section>
+
+      <section className="detail-section panel">
+        <div className="panel-header">
+          <div>
+            <h3>Position Groups + Roster</h3>
+            <p className="page-subtitle">Players are sorted by rating inside each position room.</p>
+          </div>
+        </div>
+        <div className="position-roster-grid">
+          {positionRatings.map(([label, key]) => (
+            <PositionRosterCard
+              key={key}
+              label={label}
+              value={row[key]}
+              players={roster.filter(player => normalizePosition(player.position) === label)}
+            />
+          ))}
+        </div>
       </section>
     </>
   );
@@ -75,17 +131,72 @@ function SummaryTile({ label, value, detail }: { label: string; value: string; d
   );
 }
 
-function RatingWithDelta({ value, delta }: { value: unknown; delta: unknown }) {
-  const n = Number(delta);
-  const direction = Number.isFinite(n) && Math.abs(n) >= 0.01
-    ? n > 0 ? 'up' : 'down'
-    : '';
+function PositionRosterCard({
+  label,
+  value,
+  players
+}: {
+  label: string;
+  value: unknown;
+  players: Array<Record<string, unknown>>;
+}) {
   return (
-    <span className="rating-delta-cell">
-      <span>{fmt(value)}</span>
-      {direction ? <span className={`rating-change ${direction}`} title={`${direction === 'up' ? '+' : ''}${fmt(n)}`} /> : null}
-    </span>
+    <div className="rating-detail-card position-roster-card">
+      <div>
+        <span>{label}</span>
+        <strong>{fmt(value)}</strong>
+      </div>
+      <div className="mini-meter">
+        <div style={{ width: `${Math.max(0, Math.min(100, numberValue(value)))}%` }} />
+      </div>
+      <div className="position-player-list">
+        {players.length ? players.map((player, index) => (
+          <div key={`${player.player_name}-${index}`} className="position-player-row">
+            <span>{String(player.player_name ?? '')}</span>
+            <strong>{fmt(player.rating)}</strong>
+          </div>
+        )) : (
+          <div className="position-player-empty">No roster players loaded</div>
+        )}
+      </div>
+    </div>
   );
+}
+
+function RatingRing({ label, value }: { label: string; value: unknown }) {
+  const n = numberValue(value);
+  const pct = Math.max(0, Math.min(100, n));
+  return (
+    <div className="rating-ring-card">
+      <div className="rating-ring" style={{ '--rating-pct': `${pct}%` } as CSSProperties}>
+        <div className="rating-ring-inner">{fmt(n)}</div>
+      </div>
+      <div className="rating-ring-label">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function RatingCard({ label, value }: { label: string; value: unknown }) {
+  const n = numberValue(value);
+  const pct = Math.max(0, Math.min(100, n));
+  return (
+    <div className="rating-detail-card">
+      <div>
+        <span>{label}</span>
+        <strong>{fmt(n)}</strong>
+      </div>
+      <div className="mini-meter">
+        <div style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function numberValue(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function fmt(value: unknown) {
@@ -93,7 +204,33 @@ function fmt(value: unknown) {
   return Number.isFinite(n) ? n.toFixed(2).replace(/\.00$/, '') : '';
 }
 
-function leader(rows: Record<string, unknown>[], key: string) {
-  const row = rows.slice().sort((a, b) => Number(b[key] || 0) - Number(a[key] || 0))[0];
-  return row ? String(row.team ?? '-') : '-';
+function fmtPct(value: unknown) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  const pct = n <= 1 ? n * 100 : n;
+  return `${fmt(pct)}%`;
+}
+
+function bestUnit(row: Record<string, unknown>) {
+  const best = positionRatings
+    .map(([label, key]) => ({ label, value: Number(row[key]) }))
+    .filter(item => Number.isFinite(item.value))
+    .sort((a, b) => b.value - a.value)[0];
+  return best ? best.label : '-';
+}
+
+function normalizePosition(value: unknown) {
+  const position = String(value || '').toUpperCase().trim();
+  if (position === 'QB') return 'QB';
+  if (['RB', 'HB', 'FB'].includes(position)) return 'RB';
+  if (position === 'WR') return 'WR';
+  if (position === 'TE') return 'TE';
+  if (['OL', 'OT', 'IOL', 'OG', 'C'].includes(position)) return 'OL';
+  if (['DL', 'EDGE', 'DE', 'DT', 'NT'].includes(position)) return 'DL';
+  if (['LB', 'ILB', 'OLB'].includes(position)) return 'LB';
+  if (position === 'CB') return 'CB';
+  if (['S', 'SAF'].includes(position)) return 'S';
+  if (['K', 'PK'].includes(position)) return 'K';
+  if (position === 'P') return 'P';
+  return position;
 }

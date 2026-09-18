@@ -108,8 +108,8 @@ const DEFAULT_RATING_SD = 8;
  * pace adjustment pull it back to a believable 40s number. Raise these to
  * spread scores further apart, lower them to compress toward the mean.
  */
-const OFFENSE_RESPONSE = 0.20;
-const DEFENSE_RESPONSE = 0.20;
+const OFFENSE_RESPONSE = 0.25;
+const DEFENSE_RESPONSE = 0.25;
 
 /**
  * How much of the offense signal comes from the specific pass/rush matchup

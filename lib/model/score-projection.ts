@@ -12,6 +12,57 @@ export type TeamSeasonScoring = {
   passRate: number | null;
 };
 
+/**
+ * League-wide context for the season being projected. Everything in the model
+ * is expressed RELATIVE to these numbers, so the projection stays correct no
+ * matter how the rating scale drifts between seasons or formula revisions.
+ * Build it with buildLeagueContext() from the ratings + games tables.
+ */
+export type LeagueContext = {
+  pointsPerTeam: number;
+  offMean: number;
+  offSd: number;
+  defMean: number;
+  defSd: number;
+  passOffMean: number;
+  passOffSd: number;
+  rushOffMean: number;
+  rushOffSd: number;
+  passDefMean: number;
+  passDefSd: number;
+  rushDefMean: number;
+  rushDefSd: number;
+  drivesPerGame: number;
+};
+
+export type TeamScoreBuildup = {
+  team: string;
+  /** League average points, the starting point for every projection. */
+  baseline: number;
+  /** Offense quality in standard deviations above/below league average. */
+  offenseZ: number;
+  /** Opponent defense quality in SDs. Positive = opponent defense is good. */
+  defenseZ: number;
+  /** Pass-game matchup edge in SDs, already weighted by this team's pass rate. */
+  passMatchupZ: number;
+  /** Rush-game matchup edge in SDs, already weighted by this team's rush rate. */
+  rushMatchupZ: number;
+  passRate: number;
+  rushRate: number;
+  /** Multiplier applied to baseline from offense quality. */
+  offenseMultiplier: number;
+  /** Multiplier applied to baseline from opponent defense quality. */
+  defenseMultiplier: number;
+  /** Points before pace and score-snapping. */
+  ratingPoints: number;
+  /** Points implied by actual season scoring, or null before any games. */
+  statPoints: number | null;
+  /** How much weight the season stats earned, 0 to 1. */
+  statWeight: number;
+  /** Blend of ratingPoints and statPoints. */
+  expectedPoints: number;
+};
+
 export type ScoreProjection = {
   teamA: number;
   teamB: number;
@@ -19,7 +70,9 @@ export type ScoreProjection = {
   paceFactor: number;
   teamAExpected: number;
   teamBExpected: number;
-  mode: 'preseason' | 'full-season';
+  teamABuildup: TeamScoreBuildup;
+  teamBBuildup: TeamScoreBuildup;
+  mode: 'preseason' | 'early-season' | 'full-season';
   explanation: string;
 };
 
@@ -28,11 +81,51 @@ type ScoreProjectionOptions = {
   teamAMargin: number;
   teamAStats?: TeamSeasonScoring | null;
   teamBStats?: TeamSeasonScoring | null;
+  league?: Partial<LeagueContext> | null;
+  /** Deprecated. Use league.pointsPerTeam. Kept so old call sites still compile. */
   leaguePointsPerTeam?: number | null;
 };
 
-const DEFAULT_POINTS_PER_TEAM = 27;
+/**
+ * Points-per-team in FBS sits near 28. Only used when no league context is
+ * supplied (i.e. week 0 of a brand new season).
+ */
+const DEFAULT_POINTS_PER_TEAM = 28;
 const DEFAULT_DRIVES_PER_GAME = 12;
+
+/**
+ * Rating scale fallbacks. calculateTeamRatings clamps to 0-100 and centers
+ * near 75, with most of the league inside roughly one 8-point band.
+ */
+const DEFAULT_RATING_MEAN = 75;
+const DEFAULT_RATING_SD = 8;
+
+/**
+ * Scoring response per standard deviation of team quality, as a log multiplier.
+ * 0.20 means a +2 SD offense scores about e^0.40 = 1.49x league average, and a
+ * -2 SD offense about 0.67x. Two-sided, so an elite offense against a bad
+ * defense compounds: 1.49 * 1.49 = 2.2x, i.e. ~28 -> ~62 before the clamp and
+ * pace adjustment pull it back to a believable 40s number. Raise these to
+ * spread scores further apart, lower them to compress toward the mean.
+ */
+const OFFENSE_RESPONSE = 0.20;
+const DEFENSE_RESPONSE = 0.20;
+
+/**
+ * How much of the offense signal comes from the specific pass/rush matchup
+ * (weighted by usage) versus the team's overall offensive rating. The matchup
+ * share is what makes a pass-heavy team punish a bad secondary specifically.
+ */
+const MATCHUP_SHARE = 0.55;
+const OVERALL_SHARE = 0.45;
+
+/** Prior games before season scoring stats outweigh the rating projection. */
+const SCORING_PRIOR_GAMES = 4;
+
+/** Hard floor/ceiling on a single team's projected points. */
+const MIN_TEAM_POINTS = 3;
+const MAX_TEAM_POINTS = 56;
+
 const COMMON_FOOTBALL_SCORES = [
   0, 2, 3, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17,
   20, 21, 23, 24, 26, 27, 28, 30, 31, 33, 34, 35,
@@ -46,140 +139,191 @@ export function projectMatchupScore(
   teamB: Rating,
   options: ScoreProjectionOptions
 ): ScoreProjection {
-  const useSeasonStats = options.season < 2026;
-  const leaguePoints = clamp(
-    useSeasonStats
-      ? finiteOr(options.leaguePointsPerTeam, DEFAULT_POINTS_PER_TEAM)
-      : DEFAULT_POINTS_PER_TEAM,
-    20,
-    36
-  );
-  const teamAExpected = expectedPoints(
-    teamA,
-    teamB,
-    useSeasonStats ? options.teamAStats : null,
-    useSeasonStats ? options.teamBStats : null,
-    leaguePoints
-  );
-  const teamBExpected = expectedPoints(
-    teamB,
-    teamA,
-    useSeasonStats ? options.teamBStats : null,
-    useSeasonStats ? options.teamAStats : null,
-    leaguePoints
-  );
-  const paceFactor = calculatePaceFactor(
-    teamA,
-    teamB,
-    useSeasonStats ? options.teamAStats : null,
-    useSeasonStats ? options.teamBStats : null
-  );
-  const unpacedTotal = teamAExpected + teamBExpected;
-  const pacedTotal = unpacedTotal * (0.72 + paceFactor * 0.28);
-  const minimumTotal = Math.abs(options.teamAMargin) + 6;
-  const projectedTotal = clamp(pacedTotal, Math.max(20, minimumTotal), 96);
+  const league = resolveLeagueContext(options);
+  const teamABuildup = buildTeamScore(teamA, teamB, options.teamAStats, options.teamBStats, league);
+  const teamBBuildup = buildTeamScore(teamB, teamA, options.teamBStats, options.teamAStats, league);
+  const paceFactor = calculatePaceFactor(teamA, teamB, options.teamAStats, options.teamBStats, league);
+
+  const unpacedTotal = teamABuildup.expectedPoints + teamBBuildup.expectedPoints;
+  const pacedTotal = unpacedTotal * paceFactor;
+
+  // The total must at least be able to contain the margin the spread model
+  // produced, otherwise the snapped score contradicts the posted line.
+  const minimumTotal = Math.abs(options.teamAMargin) + 9;
+  const projectedTotal = clamp(pacedTotal, Math.max(17, minimumTotal), 102);
+
   const targetA = (projectedTotal + options.teamAMargin) / 2;
   const targetB = (projectedTotal - options.teamAMargin) / 2;
   const score = chooseFootballScore(targetA, targetB, options.teamAMargin, projectedTotal);
+  const gamesPlayed = Math.min(
+    options.teamAStats?.games ?? 0,
+    options.teamBStats?.games ?? 0
+  );
+  const mode = gamesPlayed <= 0
+    ? 'preseason'
+    : gamesPlayed < SCORING_PRIOR_GAMES
+      ? 'early-season'
+      : 'full-season';
 
   return {
-    ...score,
+    teamA: score.teamA,
+    teamB: score.teamB,
     projectedTotal: round2(score.teamA + score.teamB),
     paceFactor: round2(paceFactor),
-    teamAExpected: round2(teamAExpected),
-    teamBExpected: round2(teamBExpected),
-    mode: useSeasonStats ? 'full-season' : 'preseason',
-    explanation: useSeasonStats
-      ? 'Full-season scoring, efficiency, pace, scheme, and opponent-adjusted ratings'
-      : 'Preseason talent, coaching, scheme, and matchup ratings; no season stats'
+    teamAExpected: round2(teamABuildup.expectedPoints),
+    teamBExpected: round2(teamBBuildup.expectedPoints),
+    teamABuildup,
+    teamBBuildup,
+    mode,
+    explanation: explain(mode, gamesPlayed)
   };
 }
 
-function expectedPoints(
+/**
+ * The core of the projection. Expected points are multiplicative rather than
+ * additive: offense quality and opponent defense weakness compound, which is
+ * what produces genuine blowout totals and genuine rock fights instead of
+ * pushing every game toward the league average.
+ */
+function buildTeamScore(
   offense: Rating,
   defense: Rating,
   offenseStats: TeamSeasonScoring | null | undefined,
   defenseStats: TeamSeasonScoring | null | undefined,
-  leaguePoints: number
-) {
+  league: LeagueContext
+): TeamScoreBuildup {
   const passRate = normalizeRate(offenseStats?.passRate ?? offense.passRate);
   const rushRate = 1 - passRate;
-  const schemeOffense = offense.passOff * passRate + offense.rushOff * rushRate;
-  const schemeDefense = defense.passDef * passRate + defense.rushDef * rushRate;
-  const schemeGap = schemeOffense - schemeDefense;
-  const overallGap = offense.offRating - defense.defRating;
-  const ratingEstimate = leaguePoints + schemeGap * 0.22 + overallGap * 0.10;
 
-  if (!offenseStats?.games || !defenseStats?.games) {
-    return clamp(ratingEstimate, 3, 58);
-  }
+  // Usage-weighted matchup edges, each in standard deviations.
+  const passMatchupZ = (
+    z(offense.passOff, league.passOffMean, league.passOffSd) -
+    z(defense.passDef, league.passDefMean, league.passDefSd)
+  ) * passRate;
+  const rushMatchupZ = (
+    z(offense.rushOff, league.rushOffMean, league.rushOffSd) -
+    z(defense.rushDef, league.rushDefMean, league.rushDefSd)
+  ) * rushRate;
+
+  const offenseZ = z(offense.offRating, league.offMean, league.offSd);
+  const defenseZ = z(defense.defRating, league.defMean, league.defSd);
+
+  // Blend the specific matchup with the team's overall quality. The matchup
+  // term already nets out the opponent, so it carries its own defense signal.
+  const offenseSignal = (passMatchupZ + rushMatchupZ) * MATCHUP_SHARE + offenseZ * OVERALL_SHARE;
+  const defenseSignal = defenseZ * OVERALL_SHARE;
+
+  const offenseMultiplier = Math.exp(OFFENSE_RESPONSE * offenseSignal);
+  const defenseMultiplier = Math.exp(-DEFENSE_RESPONSE * defenseSignal);
+  const ratingPoints = clamp(
+    league.pointsPerTeam * offenseMultiplier * defenseMultiplier,
+    MIN_TEAM_POINTS,
+    MAX_TEAM_POINTS
+  );
+
+  const statPoints = seasonStatPoints(offenseStats, defenseStats, league);
+  const sampleGames = Math.min(offenseStats?.games ?? 0, defenseStats?.games ?? 0);
+  const statWeight = statPoints === null
+    ? 0
+    : clamp(sampleGames / (sampleGames + SCORING_PRIOR_GAMES), 0, 0.6);
+  const expectedPoints = statPoints === null
+    ? ratingPoints
+    : ratingPoints * (1 - statWeight) + statPoints * statWeight;
+
+  return {
+    team: offense.team,
+    baseline: round2(league.pointsPerTeam),
+    offenseZ: round2(offenseZ),
+    defenseZ: round2(defenseZ),
+    passMatchupZ: round2(passMatchupZ),
+    rushMatchupZ: round2(rushMatchupZ),
+    passRate: round2(passRate),
+    rushRate: round2(rushRate),
+    offenseMultiplier: round2(offenseMultiplier),
+    defenseMultiplier: round2(defenseMultiplier),
+    ratingPoints: round2(ratingPoints),
+    statPoints: statPoints === null ? null : round2(statPoints),
+    statWeight: round2(statWeight),
+    expectedPoints: round2(clamp(expectedPoints, MIN_TEAM_POINTS, MAX_TEAM_POINTS))
+  };
+}
+
+/**
+ * What the two teams' actual season results imply, independent of ratings:
+ * this offense's scoring average crossed with this defense's points allowed,
+ * plus a points-per-drive view. Returns null before either side has played.
+ */
+function seasonStatPoints(
+  offenseStats: TeamSeasonScoring | null | undefined,
+  defenseStats: TeamSeasonScoring | null | undefined,
+  league: LeagueContext
+): number | null {
+  if (!offenseStats?.games || !defenseStats?.games) return null;
 
   const offensePoints = regressToMean(
     offenseStats.pointsFor,
-    leaguePoints,
+    league.pointsPerTeam,
     offenseStats.games,
-    3
+    SCORING_PRIOR_GAMES
   );
   const defenseAllowance = regressToMean(
     defenseStats.pointsAllowed,
-    leaguePoints,
+    league.pointsPerTeam,
     defenseStats.games,
-    3
+    SCORING_PRIOR_GAMES
   );
-  const scoringEstimate = offensePoints * 0.56 + defenseAllowance * 0.44;
+
+  // Log5-style: an offense scoring 1.3x league average against a defense
+  // allowing 0.8x league average projects to 28 * 1.3 * 0.8.
+  const offenseFactor = safeRatio(offensePoints, league.pointsPerTeam);
+  const defenseFactor = safeRatio(defenseAllowance, league.pointsPerTeam);
+  const scoringEstimate = league.pointsPerTeam * offenseFactor * defenseFactor;
+
   const expectedDrives = averageFinite([
     offenseStats.drivesPerGame,
     defenseStats.drivesPerGame
-  ]) ?? DEFAULT_DRIVES_PER_GAME;
-  const leaguePpd = leaguePoints / DEFAULT_DRIVES_PER_GAME;
-  const offensePpd = regressToMean(
-    offenseStats.offensivePpd,
-    leaguePpd,
-    offenseStats.games,
-    4
-  );
-  const defensePpd = regressToMean(
-    defenseStats.defensivePpd,
-    leaguePpd,
-    defenseStats.games,
-    4
-  );
+  ]) ?? league.drivesPerGame;
+  const leaguePpd = league.pointsPerTeam / league.drivesPerGame;
+  const offensePpd = regressToMean(offenseStats.offensivePpd, leaguePpd, offenseStats.games, SCORING_PRIOR_GAMES);
+  const defensePpd = regressToMean(defenseStats.defensivePpd, leaguePpd, defenseStats.games, SCORING_PRIOR_GAMES);
   const efficiencyEstimate = ((offensePpd + defensePpd) / 2) * expectedDrives;
 
   return clamp(
-    scoringEstimate * 0.50 + efficiencyEstimate * 0.22 + ratingEstimate * 0.28,
-    2,
-    62
+    scoringEstimate * 0.62 + efficiencyEstimate * 0.38,
+    MIN_TEAM_POINTS,
+    MAX_TEAM_POINTS
   );
 }
 
+/**
+ * Pace multiplier applied to the combined total. Two grind-it-out teams should
+ * come in under their combined per-game averages, two tempo teams over.
+ */
 function calculatePaceFactor(
   teamA: Rating,
   teamB: Rating,
   teamAStats: TeamSeasonScoring | null | undefined,
-  teamBStats: TeamSeasonScoring | null | undefined
+  teamBStats: TeamSeasonScoring | null | undefined,
+  league: LeagueContext
 ) {
-  const drives = averageFinite([
-    teamAStats?.drivesPerGame,
-    teamBStats?.drivesPerGame
-  ]);
-  const plays = averageFinite([
-    teamAStats?.playsPerGame,
-    teamBStats?.playsPerGame
-  ]);
+  const drives = averageFinite([teamAStats?.drivesPerGame, teamBStats?.drivesPerGame]);
+  const plays = averageFinite([teamAStats?.playsPerGame, teamBStats?.playsPerGame]);
 
   if (drives !== null || plays !== null) {
-    const drivesFactor = drives === null ? 1 : drives / DEFAULT_DRIVES_PER_GAME;
+    const drivesFactor = drives === null ? 1 : drives / league.drivesPerGame;
     const playsFactor = plays === null ? 1 : plays / 70;
-    return clamp(drivesFactor * 0.65 + playsFactor * 0.35, 0.86, 1.14);
+    return clamp(drivesFactor * 0.65 + playsFactor * 0.35, 0.82, 1.18);
   }
 
-  const averagePassRate = (
-    normalizeRate(teamA.passRate) + normalizeRate(teamB.passRate)
-  ) / 2;
-  return clamp(1 + (averagePassRate - 0.5) * 0.3, 0.94, 1.06);
+  // No pace data yet: pass-heavier teams stop the clock more often.
+  const averagePassRate = (normalizeRate(teamA.passRate) + normalizeRate(teamB.passRate)) / 2;
+  return clamp(1 + (averagePassRate - 0.5) * 0.3, 0.93, 1.07);
 }
 
+/**
+ * Snap the continuous projection to a score football actually produces.
+ * Margin is weighted hardest so the displayed score agrees with the spread.
+ */
 function chooseFootballScore(
   targetA: number,
   targetB: number,
@@ -201,6 +345,99 @@ function chooseFootballScore(
   return { teamA: best.teamA, teamB: best.teamB };
 }
 
+/**
+ * Derive league means and spreads from the season's rating rows. Call once per
+ * request and pass the result into every projection for that season.
+ */
+export function buildLeagueContext(
+  ratings: Rating[],
+  overrides: Partial<LeagueContext> = {}
+): LeagueContext {
+  const pick = (selector: (rating: Rating) => number | null | undefined) =>
+    distribution(ratings.map(selector));
+
+  const off = pick(rating => rating.offRating);
+  const def = pick(rating => rating.defRating);
+  const passOff = pick(rating => rating.passOff);
+  const rushOff = pick(rating => rating.rushOff);
+  const passDef = pick(rating => rating.passDef);
+  const rushDef = pick(rating => rating.rushDef);
+
+  return {
+    pointsPerTeam: clamp(finiteOr(overrides.pointsPerTeam, DEFAULT_POINTS_PER_TEAM), 18, 40),
+    drivesPerGame: clamp(finiteOr(overrides.drivesPerGame, DEFAULT_DRIVES_PER_GAME), 8, 16),
+    offMean: finiteOr(overrides.offMean, off.mean),
+    offSd: finiteOr(overrides.offSd, off.sd),
+    defMean: finiteOr(overrides.defMean, def.mean),
+    defSd: finiteOr(overrides.defSd, def.sd),
+    passOffMean: finiteOr(overrides.passOffMean, passOff.mean),
+    passOffSd: finiteOr(overrides.passOffSd, passOff.sd),
+    rushOffMean: finiteOr(overrides.rushOffMean, rushOff.mean),
+    rushOffSd: finiteOr(overrides.rushOffSd, rushOff.sd),
+    passDefMean: finiteOr(overrides.passDefMean, passDef.mean),
+    passDefSd: finiteOr(overrides.passDefSd, passDef.sd),
+    rushDefMean: finiteOr(overrides.rushDefMean, rushDef.mean),
+    rushDefSd: finiteOr(overrides.rushDefSd, rushDef.sd)
+  };
+}
+
+function resolveLeagueContext(options: ScoreProjectionOptions): LeagueContext {
+  const supplied = options.league ?? {};
+  const pointsPerTeam = finiteOr(
+    supplied.pointsPerTeam ?? options.leaguePointsPerTeam,
+    DEFAULT_POINTS_PER_TEAM
+  );
+
+  return {
+    pointsPerTeam: clamp(pointsPerTeam, 18, 40),
+    drivesPerGame: clamp(finiteOr(supplied.drivesPerGame, DEFAULT_DRIVES_PER_GAME), 8, 16),
+    offMean: finiteOr(supplied.offMean, DEFAULT_RATING_MEAN),
+    offSd: positiveOr(supplied.offSd, DEFAULT_RATING_SD),
+    defMean: finiteOr(supplied.defMean, DEFAULT_RATING_MEAN),
+    defSd: positiveOr(supplied.defSd, DEFAULT_RATING_SD),
+    passOffMean: finiteOr(supplied.passOffMean, DEFAULT_RATING_MEAN),
+    passOffSd: positiveOr(supplied.passOffSd, DEFAULT_RATING_SD),
+    rushOffMean: finiteOr(supplied.rushOffMean, DEFAULT_RATING_MEAN),
+    rushOffSd: positiveOr(supplied.rushOffSd, DEFAULT_RATING_SD),
+    passDefMean: finiteOr(supplied.passDefMean, DEFAULT_RATING_MEAN),
+    passDefSd: positiveOr(supplied.passDefSd, DEFAULT_RATING_SD),
+    rushDefMean: finiteOr(supplied.rushDefMean, DEFAULT_RATING_MEAN),
+    rushDefSd: positiveOr(supplied.rushDefSd, DEFAULT_RATING_SD)
+  };
+}
+
+function explain(mode: ScoreProjection['mode'], games: number) {
+  if (mode === 'preseason') {
+    return 'Preseason talent, coaching, and matchup ratings; no season stats yet';
+  }
+  if (mode === 'early-season') {
+    return `Matchup ratings with ${games} game${games === 1 ? '' : 's'} of season scoring blended in`;
+  }
+  return 'Season scoring, points per drive, pace, usage rates, and opponent-adjusted matchup ratings';
+}
+
+function distribution(values: Array<number | null | undefined>) {
+  const numbers = values.map(Number).filter(Number.isFinite);
+  if (!numbers.length) return { mean: DEFAULT_RATING_MEAN, sd: DEFAULT_RATING_SD };
+  const mean = numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
+  if (numbers.length < 2) return { mean, sd: DEFAULT_RATING_SD };
+  const variance = numbers.reduce((sum, value) => sum + square(value - mean), 0) / (numbers.length - 1);
+  const sd = Math.sqrt(variance);
+  return { mean, sd: sd > 0.5 ? sd : DEFAULT_RATING_SD };
+}
+
+function z(value: number | null | undefined, mean: number, sd: number) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || !(sd > 0)) return 0;
+  // Clamp so one broken rating row cannot produce a 70-point projection.
+  return clamp((number - mean) / sd, -3.5, 3.5);
+}
+
+function safeRatio(value: number, base: number) {
+  if (!(base > 0)) return 1;
+  return clamp(value / base, 0.35, 2.1);
+}
+
 function regressToMean(
   value: number | null | undefined,
   mean: number,
@@ -213,9 +450,7 @@ function regressToMean(
 }
 
 function averageFinite(values: Array<number | null | undefined>) {
-  const numbers = values
-    .map(Number)
-    .filter(Number.isFinite);
+  const numbers = values.map(Number).filter(Number.isFinite);
   if (!numbers.length) return null;
   return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
 }
@@ -223,6 +458,11 @@ function averageFinite(values: Array<number | null | undefined>) {
 function finiteOr(value: number | null | undefined, fallback: number) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function positiveOr(value: number | null | undefined, fallback: number) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0.5 ? number : fallback;
 }
 
 function square(value: number) {

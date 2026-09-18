@@ -20,7 +20,11 @@ type PredictionResponse = {
     mlSpread: string | null;
     mlTeamAMargin: number | null;
     mlWinProbHome: number | null;
+    /** The spread actually shown as the headline — ML when available, else formula. */
     spread: string;
+    /** Formula-only spread, always present, used for the secondary comparison line. */
+    formulaSpread: string;
+    formulaTeamAMargin: number;
     predictedWinner: string;
     predictedMargin: number;
     teamAMargin: number;
@@ -185,9 +189,9 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
       <section className="grid kpi-grid predictor-kpis">
         <Kpi
           label="Projected Spread"
-          value={prediction.mlSpread ?? prediction.spread}
+          value={prediction.spread}
           detail={prediction.mlSpread
-            ? `Formula: ${prediction.spread} · ${result.homeTeam} home`
+            ? `Formula: ${prediction.formulaSpread} · ${result.homeTeam} home`
             : `${result.homeTeam} home field context`}
         />
         <Kpi

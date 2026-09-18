@@ -70,14 +70,18 @@ export async function POST(request: NextRequest) {
     // derived from this margin (score, win %, edges) must derive from the
     // SAME rounded value so the page never shows two models' numbers mixed
     // together as if they were one prediction.
-    const rawMlHomeMargin = mlResult.data?.ml_home_margin;
+    const rawMlHomeMargin = site === 'neutral' ? null : mlResult.data?.ml_home_margin;
     const mlHomeMargin = rawMlHomeMargin != null && Number.isFinite(Number(rawMlHomeMargin))
       ? roundToHalf(Number(rawMlHomeMargin))
       : null;
-    const mlWinProbHome = mlResult.data?.ml_win_prob_home ?? null;
+    const mlWinProbHome = site === 'neutral' ? null : (mlResult.data?.ml_win_prob_home ?? null);
     const mlTeamAMargin = mlHomeMargin !== null
       ? (site === 'teamB' ? -mlHomeMargin : mlHomeMargin)
       : null;
+    // True only when the ML row actually matches this exact site selection —
+    // i.e. this is the real scheduled matchup, not a hypothetical flip. Used
+    // to label the result so a jump between sites is explained, not hidden.
+    const isRealMatchupMl = mlHomeMargin !== null;
 
     const ratings = new Map((ratingsResult.data ?? []).map(row => [String(row.team), mapRating(row)]));
     const ratingA = ratings.get(teamA);
@@ -163,6 +167,11 @@ export async function POST(request: NextRequest) {
         mlHomeMargin,
         mlTeamAMargin,
         mlWinProbHome,
+        // Lets the UI say "this is Vegas/ML-trained data for the real
+        // scheduled matchup" vs "hypothetical, formula-only projection" —
+        // so a jump between site toggles is explained instead of silent.
+        isRealMatchupMl,
+        homeFieldPoints: site === 'neutral' ? 0 : calibration.homeField,
         mlSpread: mlTeamAMargin !== null
           ? formatModelSpread(mlTeamAMargin >= 0 ? teamA : teamB, Math.abs(mlTeamAMargin))
           : null

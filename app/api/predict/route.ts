@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPublicSupabase } from '@/lib/db/client';
-import { DEFAULT_CALIBRATION, DEFAULT_WEIGHTS, predictGame } from '@/lib/model/predict';
+import { DEFAULT_CALIBRATION, DEFAULT_WEIGHTS, formatModelSpread, predictGame } from '@/lib/model/predict';
+import { roundToHalf } from '@/lib/model/math';
 import { projectMatchupScore, type TeamSeasonScoring } from '@/lib/model/score-projection';
 import {
   calibrateWinProbability,
@@ -64,10 +65,18 @@ export async function POST(request: NextRequest) {
     if (configResult.error) throw configResult.error;
     if (coachesResult.error) throw coachesResult.error;
     if (mlResult.error) throw mlResult.error;
-    const mlHomeMargin = mlResult.data?.ml_home_margin ?? null;
+    // Round to the nearest half point immediately: every spread shown to the
+    // user (ML or formula) must land on a .0/.5 line, and every number
+    // derived from this margin (score, win %, edges) must derive from the
+    // SAME rounded value so the page never shows two models' numbers mixed
+    // together as if they were one prediction.
+    const rawMlHomeMargin = mlResult.data?.ml_home_margin;
+    const mlHomeMargin = rawMlHomeMargin != null && Number.isFinite(Number(rawMlHomeMargin))
+      ? roundToHalf(Number(rawMlHomeMargin))
+      : null;
     const mlWinProbHome = mlResult.data?.ml_win_prob_home ?? null;
     const mlTeamAMargin = mlHomeMargin !== null
-      ? (site === 'teamB' ? -Number(mlHomeMargin) : Number(mlHomeMargin))
+      ? (site === 'teamB' ? -mlHomeMargin : mlHomeMargin)
       : null;
 
     const ratings = new Map((ratingsResult.data ?? []).map(row => [String(row.team), mapRating(row)]));
@@ -84,9 +93,21 @@ export async function POST(request: NextRequest) {
       ? { ...config.calibration, homeField: 0 }
       : config.calibration;
     const prediction = predictGame(homeRating, awayRating, config.weights, calibration);
-    const teamAMargin = site === 'teamB'
+    const formulaTeamAMargin = site === 'teamB'
       ? -prediction.modelHomeMargin
       : prediction.modelHomeMargin;
+
+    // Everything the page shows (spread text, score, win %) must trace back
+    // to ONE margin. When an ML margin is on file, it becomes the displayed
+    // spread, so it also becomes the margin that drives the score projection
+    // and win probability below — the formula figures still ride along as
+    // labeled secondary context in the response, never as a second, silently
+    // different "truth".
+    const effectiveTeamAMargin = mlTeamAMargin ?? formulaTeamAMargin;
+    const displaySpread = mlTeamAMargin !== null
+      ? formatModelSpread(mlTeamAMargin >= 0 ? teamA : teamB, Math.abs(mlTeamAMargin))
+      : prediction.modelSpread;
+
     const coaches = new Map(
       (coachesResult.data ?? []).map(row => [
         String(row.team),
@@ -94,7 +115,7 @@ export async function POST(request: NextRequest) {
       ])
     );
     const winCalibration = calibrateWinProbability(
-      teamAMargin,
+      formulaTeamAMargin,
       (historyResult.data ?? []).map(row => ({
         modelHomeMargin: numberOrDefault(row.model_home_margin, Number.NaN),
         actualHomeMargin: numberOrDefault(row.home_margin, Number.NaN)
@@ -104,12 +125,13 @@ export async function POST(request: NextRequest) {
       season
     );
     const teamAWinProbability = winCalibration.finalProbability;
-    const seasonScoring = season < 2026
-      ? await loadSeasonScoring(supabase, season, teamA, teamB)
-      : null;
+    // Blend in season-to-date scoring for every season, including the live
+    // one — a team's actual points-for/points-allowed this year should count
+    // even in-season, not just in fully completed historical seasons.
+    const seasonScoring = await loadSeasonScoring(supabase, season, teamA, teamB);
     const score = projectMatchupScore(ratingA, ratingB, {
       season,
-      teamAMargin,
+      teamAMargin: effectiveTeamAMargin,
       teamAStats: seasonScoring?.teams.get(teamA),
       teamBStats: seasonScoring?.teams.get(teamB),
       leaguePointsPerTeam: seasonScoring?.leaguePointsPerTeam
@@ -125,22 +147,24 @@ export async function POST(request: NextRequest) {
       awayTeam: awayRating.team,
       prediction: {
         ...prediction,
-        teamAMargin,
-        teamBMargin: -teamAMargin,
+        // The margin/spread the UI should treat as authoritative.
+        teamAMargin: effectiveTeamAMargin,
+        teamBMargin: -effectiveTeamAMargin,
+        spread: displaySpread,
         teamAWinProbability,
         teamBWinProbability: 1 - teamAWinProbability,
         winCalibration,
         teamAScore: score.teamA,
         teamBScore: score.teamB,
         scoreProjection: score,
-        spread: prediction.modelSpread,
-        mlHomeMargin: mlHomeMargin,
-        mlTeamAMargin: mlTeamAMargin,
-        mlWinProbHome: mlWinProbHome,
+        // Formula-only figures, kept for the "Formula: ..." secondary line.
+        formulaTeamAMargin,
+        formulaSpread: prediction.modelSpread,
+        mlHomeMargin,
+        mlTeamAMargin,
+        mlWinProbHome,
         mlSpread: mlTeamAMargin !== null
-          ? mlTeamAMargin === 0
-            ? "Pick'em"
-            : `${mlTeamAMargin > 0 ? teamA : teamB} -${Math.abs(mlTeamAMargin).toFixed(1)}`
+          ? formatModelSpread(mlTeamAMargin >= 0 ? teamA : teamB, Math.abs(mlTeamAMargin))
           : null
       },
       ratings: {

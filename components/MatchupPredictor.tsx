@@ -17,6 +17,8 @@ type PredictionResponse = {
   homeTeam?: string;
   awayTeam?: string;
   prediction?: {
+    isRealMatchupMl: boolean;
+    homeFieldPoints: number;
     mlSpread: string | null;
     mlTeamAMargin: number | null;
     mlWinProbHome: number | null;
@@ -186,13 +188,22 @@ function PredictionResult({ result }: { result: PredictionResponse }) {
 
   return (
     <div className="predictor-results">
+      {!prediction.isRealMatchupMl ? (
+        <p className="status-text predictor-note">
+          Hypothetical site — no ML data exists for this direction, so this is the formula-only projection ({fmt(prediction.homeFieldPoints)} pt home field applied).
+        </p>
+      ) : (
+        <p className="status-text predictor-note">
+          This site matches the actual scheduled matchup, so the headline number is the trained ML model's prediction, not the formula.
+        </p>
+      )}
       <section className="grid kpi-grid predictor-kpis">
         <Kpi
           label="Projected Spread"
           value={prediction.spread}
           detail={prediction.mlSpread
-            ? `Formula: ${prediction.formulaSpread} · ${result.homeTeam} home`
-            : `${result.homeTeam} home field context`}
+            ? `ML model (actual scheduled matchup) · Formula-only: ${prediction.formulaSpread}`
+            : `Formula projection · ${fmt(prediction.homeFieldPoints)} pt home field`}
         />
         <Kpi
           label="Projected Score"
